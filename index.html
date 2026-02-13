@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ライフプランシミュレーター | 将来の家計を見える化</title>
+  <meta name="description" content="夫婦の年齢や子どもの年齢から、結婚・出産・教育・住宅・老後のライフイベントと費用をシミュレーション。パラメータを自由に調整して将来の家計を見える化します。" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>" />
+</head>
+<body>
+  <div id="app">
+    <header class="app-header">
+      <div class="header-content">
+        <div class="logo">
+          <span class="logo-icon">📊</span>
+          <h1>ライフプランシミュレーター</h1>
+        </div>
+        <p class="header-subtitle">将来の家計を見える化しよう</p>
+      </div>
+
+    </header>
+    <main class="app-main">
+      <section id="inputSection" class="section"></section>
+      <section id="resultsSection" class="section results-section" style="display: none;">
+        <div class="results-layout">
+          <div class="results-main">
+            <div id="summarySection"></div>
+            <div id="chartSection"></div>
+            <div id="timelineSection"></div>
+          </div>
+          <aside class="results-sidebar">
+            <div id="paramSection"></div>
+          </aside>
+        </div>
+      </section>
+    </main>
+    <footer class="app-footer">
+      <p>※ このシミュレーションは概算です。実際の金額は個人の状況により異なります。</p>
+    </footer>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
