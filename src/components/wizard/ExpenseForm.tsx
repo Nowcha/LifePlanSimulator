@@ -1,6 +1,7 @@
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { Button } from '@/components/ui/button';
 import {
     Select,
     SelectContent,
@@ -11,7 +12,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormTooltip } from '@/components/ui/form-tooltip';
 import { usePlanStore } from '@/stores/plan-store';
-import type { HousingType, EducationLevel, UniversityType } from '@/types/plan';
+import type { HousingType, EducationLevel, UniversityType, CustomLivingCostItem } from '@/types/plan';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export function ExpenseForm() {
@@ -32,7 +33,7 @@ export function ExpenseForm() {
                     <div className="flex items-center justify-between bg-muted/50 p-4 rounded-lg">
                         <span className="font-bold text-lg">合計</span>
                         <span className="font-bold text-2xl text-primary">
-                            {Object.values(expense.monthlyLivingCost).reduce((a, b) => a + b, 0)} <span className="text-sm font-normal text-muted-foreground">万円/月</span>
+                            {(Object.values(expense.monthlyLivingCost).reduce((a, b) => a + b, 0) + (expense.customLivingCosts || []).reduce((a, item) => a + item.amount, 0)).toFixed(1)} <span className="text-sm font-normal text-muted-foreground">万円/月</span>
                         </span>
                     </div>
 
@@ -94,8 +95,72 @@ export function ExpenseForm() {
                         </div>
                     </div>
 
+                    {/* カスタム生活費項目 */}
+                    <div className="pt-4 mt-4 border-t space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-semibold">カスタム項目</h4>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                    const newItem: CustomLivingCostItem = {
+                                        id: crypto.randomUUID(),
+                                        name: '',
+                                        amount: 0,
+                                    };
+                                    updateExpense({
+                                        customLivingCosts: [...(expense.customLivingCosts || []), newItem],
+                                    });
+                                }}
+                            >
+                                ＋ 項目を追加
+                            </Button>
+                        </div>
+                        {(expense.customLivingCosts || []).map((item, index) => (
+                            <div key={item.id} className="flex items-end gap-2">
+                                <div className="flex-1 space-y-1">
+                                    {index === 0 && <Label className="text-xs">項目名</Label>}
+                                    <Input
+                                        placeholder="例: 習い事"
+                                        value={item.name}
+                                        onChange={(e) => {
+                                            const updated = [...(expense.customLivingCosts || [])];
+                                            updated[index] = { ...item, name: e.target.value };
+                                            updateExpense({ customLivingCosts: updated });
+                                        }}
+                                    />
+                                </div>
+                                <div className="w-24 space-y-1">
+                                    {index === 0 && <Label className="text-xs">月額(万円)</Label>}
+                                    <Input
+                                        type="number" min={0} max={50} step={0.1}
+                                        value={item.amount}
+                                        onChange={(e) => {
+                                            const updated = [...(expense.customLivingCosts || [])];
+                                            updated[index] = { ...item, amount: Number(e.target.value) };
+                                            updateExpense({ customLivingCosts: updated });
+                                        }}
+                                    />
+                                </div>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-destructive hover:text-destructive"
+                                    onClick={() => {
+                                        const updated = (expense.customLivingCosts || []).filter((_, i) => i !== index);
+                                        updateExpense({ customLivingCosts: updated });
+                                    }}
+                                >
+                                    ✕
+                                </Button>
+                            </div>
+                        ))}
+                    </div>
+
                     {hasChildren && (
-                        <div className="pt-4 mt-6 border-t space-y-4">
+                        <div className="pt-4 mt-4 border-t space-y-4">
                             <h4 className="text-sm font-semibold flex items-center gap-2">
                                 子ども関連の追加生活費
                                 <FormTooltip text="お子様が独立するまで（22歳想定）、基本生活費とは別に毎月自動加算される金額です。" />
@@ -147,23 +212,63 @@ export function ExpenseForm() {
                     {/* 賃貸の場合 */}
                     {expense.housing.type === 'rent' && (
                         <>
-                            <div className="space-y-2 pl-4 border-l-2 border-primary/20">
-                                <Label htmlFor="monthlyRent">月額家賃（管理費込み）</Label>
-                                <div className="flex items-center gap-3">
-                                    <Input
-                                        id="monthlyRent"
-                                        type="number"
-                                        min={0}
-                                        max={100}
-                                        value={expense.housing.monthlyRent}
-                                        onChange={(e) =>
-                                            updateExpense({
-                                                housing: { ...expense.housing, monthlyRent: Number(e.target.value) },
-                                            })
-                                        }
-                                        className="w-24"
-                                    />
-                                    <span className="text-sm text-muted-foreground">万円/月</span>
+                            <div className="space-y-4 pl-4 border-l-2 border-primary/20">
+                                <div className="space-y-2">
+                                    <Label htmlFor="monthlyRent">月額家賃（管理費込み）</Label>
+                                    <div className="flex items-center gap-3">
+                                        <Input
+                                            id="monthlyRent"
+                                            type="number"
+                                            min={0}
+                                            max={100}
+                                            value={expense.housing.monthlyRent}
+                                            onChange={(e) =>
+                                                updateExpense({
+                                                    housing: { ...expense.housing, monthlyRent: Number(e.target.value) },
+                                                })
+                                            }
+                                            className="w-24"
+                                        />
+                                        <span className="text-sm text-muted-foreground">万円/月</span>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label>更新頻度</Label>
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                type="number"
+                                                min={1}
+                                                max={10}
+                                                value={expense.housing.renewalCycleYears ?? 2}
+                                                onChange={(e) =>
+                                                    updateExpense({
+                                                        housing: { ...expense.housing, renewalCycleYears: Number(e.target.value) },
+                                                    })
+                                                }
+                                                className="w-20"
+                                            />
+                                            <span className="text-sm text-muted-foreground whitespace-nowrap">年ごと</span>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>更新費用</Label>
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                type="number"
+                                                min={0}
+                                                max={100}
+                                                value={expense.housing.renewalCost ?? 8}
+                                                onChange={(e) =>
+                                                    updateExpense({
+                                                        housing: { ...expense.housing, renewalCost: Number(e.target.value) },
+                                                    })
+                                                }
+                                                className="w-20"
+                                            />
+                                            <span className="text-sm text-muted-foreground whitespace-nowrap">万円</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -534,31 +639,91 @@ export function ExpenseForm() {
                     </div>
 
                     {expense.car.enabled && (
-                        <div className="grid grid-cols-2 gap-4 pl-4 border-l-2 border-primary/20">
-                            <div className="space-y-2">
-                                <Label>買替サイクル</Label>
-                                <div className="flex items-center gap-2">
-                                    <Input
-                                        type="number"
-                                        min={1}
-                                        max={20}
-                                        value={expense.car.replaceCycleYears}
-                                        onChange={(e) => updateExpense({ car: { ...expense.car, replaceCycleYears: Number(e.target.value) } })}
-                                    />
-                                    <span className="text-sm text-muted-foreground whitespace-nowrap">年</span>
+                        <div className="space-y-4 pl-4 border-l-2 border-primary/20">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>買替サイクル</Label>
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            type="number"
+                                            min={1}
+                                            max={20}
+                                            value={expense.car.replaceCycleYears}
+                                            onChange={(e) => updateExpense({ car: { ...expense.car, replaceCycleYears: Number(e.target.value) } })}
+                                        />
+                                        <span className="text-sm text-muted-foreground whitespace-nowrap">年</span>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>1台あたり購入費</Label>
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            type="number"
+                                            min={0}
+                                            max={2000}
+                                            value={expense.car.purchaseCost}
+                                            onChange={(e) => updateExpense({ car: { ...expense.car, purchaseCost: Number(e.target.value) } })}
+                                        />
+                                        <span className="text-sm text-muted-foreground whitespace-nowrap">万円</span>
+                                    </div>
                                 </div>
                             </div>
-                            <div className="space-y-2">
-                                <Label>1台あたり購入費</Label>
-                                <div className="flex items-center gap-2">
-                                    <Input
-                                        type="number"
-                                        min={0}
-                                        max={2000}
-                                        value={expense.car.purchaseCost}
-                                        onChange={(e) => updateExpense({ car: { ...expense.car, purchaseCost: Number(e.target.value) } })}
-                                    />
-                                    <span className="text-sm text-muted-foreground whitespace-nowrap">万円</span>
+                            <h4 className="text-sm font-semibold pt-2 border-t">維持・管理費</h4>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>自動車保険</Label>
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            type="number" min={0} max={50} step={0.1}
+                                            value={expense.car.annualInsurance ?? 6}
+                                            onChange={(e) => updateExpense({ car: { ...expense.car, annualInsurance: Number(e.target.value) } })}
+                                        />
+                                        <span className="text-sm text-muted-foreground whitespace-nowrap">万円/年</span>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>自動車税</Label>
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            type="number" min={0} max={20} step={0.1}
+                                            value={expense.car.annualTax ?? 4}
+                                            onChange={(e) => updateExpense({ car: { ...expense.car, annualTax: Number(e.target.value) } })}
+                                        />
+                                        <span className="text-sm text-muted-foreground whitespace-nowrap">万円/年</span>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>駐車場代</Label>
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            type="number" min={0} max={10} step={0.1}
+                                            value={expense.car.monthlyParking ?? 1.5}
+                                            onChange={(e) => updateExpense({ car: { ...expense.car, monthlyParking: Number(e.target.value) } })}
+                                        />
+                                        <span className="text-sm text-muted-foreground whitespace-nowrap">万円/月</span>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>車検・整備費 (年按分)</Label>
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            type="number" min={0} max={30} step={0.1}
+                                            value={expense.car.annualMaintenance ?? 5}
+                                            onChange={(e) => updateExpense({ car: { ...expense.car, annualMaintenance: Number(e.target.value) } })}
+                                        />
+                                        <span className="text-sm text-muted-foreground whitespace-nowrap">万円/年</span>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>ガソリン・燃料費</Label>
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            type="number" min={0} max={10} step={0.1}
+                                            value={expense.car.monthlyGasFuel ?? 1}
+                                            onChange={(e) => updateExpense({ car: { ...expense.car, monthlyGasFuel: Number(e.target.value) } })}
+                                        />
+                                        <span className="text-sm text-muted-foreground whitespace-nowrap">万円/月</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>

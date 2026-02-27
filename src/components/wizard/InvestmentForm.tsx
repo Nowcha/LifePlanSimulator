@@ -23,7 +23,7 @@ export function InvestmentForm() {
             {/* 資産内訳 */}
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-lg">現在の金融資産</CardTitle>
+                    <CardTitle className="text-lg">現在の金融資産 (ご本人)</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
                     <div className="grid grid-cols-3 gap-6">
@@ -34,10 +34,10 @@ export function InvestmentForm() {
                                     type="number"
                                     min={0}
                                     max={100000}
-                                    value={investment.totalAssets.savings}
+                                    value={investment.selfTotalAssets.savings}
                                     onChange={(e) =>
                                         updateInvestment({
-                                            totalAssets: { ...investment.totalAssets, savings: Number(e.target.value) },
+                                            selfTotalAssets: { ...investment.selfTotalAssets, savings: Number(e.target.value) },
                                         })
                                     }
                                 />
@@ -51,10 +51,10 @@ export function InvestmentForm() {
                                     type="number"
                                     min={0}
                                     max={100000}
-                                    value={investment.totalAssets.stocksAndFunds}
+                                    value={investment.selfTotalAssets.stocksAndFunds}
                                     onChange={(e) =>
                                         updateInvestment({
-                                            totalAssets: { ...investment.totalAssets, stocksAndFunds: Number(e.target.value) },
+                                            selfTotalAssets: { ...investment.selfTotalAssets, stocksAndFunds: Number(e.target.value) },
                                         })
                                     }
                                 />
@@ -68,10 +68,10 @@ export function InvestmentForm() {
                                     type="number"
                                     min={0}
                                     max={100000}
-                                    value={investment.totalAssets.other}
+                                    value={investment.selfTotalAssets.other}
                                     onChange={(e) =>
                                         updateInvestment({
-                                            totalAssets: { ...investment.totalAssets, other: Number(e.target.value) },
+                                            selfTotalAssets: { ...investment.selfTotalAssets, other: Number(e.target.value) },
                                         })
                                     }
                                 />
@@ -81,10 +81,77 @@ export function InvestmentForm() {
                     </div>
 
                     <div className="pt-4 border-t text-right font-medium">
-                        総資産額: {(investment.totalAssets.savings + investment.totalAssets.stocksAndFunds + investment.totalAssets.other).toLocaleString()} 万円
+                        ご本人資産額: {(investment.selfTotalAssets.savings + investment.selfTotalAssets.stocksAndFunds + investment.selfTotalAssets.other).toLocaleString()} 万円
                     </div>
                 </CardContent>
             </Card>
+
+            {input.basicInfo.hasSpouse && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-lg">現在の金融資産 (配偶者)</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        <div className="grid grid-cols-3 gap-6">
+                            <div className="space-y-2">
+                                <Label>預貯金</Label>
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        max={100000}
+                                        value={investment.spouseTotalAssets.savings}
+                                        onChange={(e) =>
+                                            updateInvestment({
+                                                spouseTotalAssets: { ...investment.spouseTotalAssets, savings: Number(e.target.value) },
+                                            })
+                                        }
+                                    />
+                                    <span className="text-sm text-muted-foreground whitespace-nowrap">万円</span>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>株式・投資信託</Label>
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        max={100000}
+                                        value={investment.spouseTotalAssets.stocksAndFunds}
+                                        onChange={(e) =>
+                                            updateInvestment({
+                                                spouseTotalAssets: { ...investment.spouseTotalAssets, stocksAndFunds: Number(e.target.value) },
+                                            })
+                                        }
+                                    />
+                                    <span className="text-sm text-muted-foreground whitespace-nowrap">万円</span>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>その他有価証券</Label>
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        max={100000}
+                                        value={investment.spouseTotalAssets.other}
+                                        onChange={(e) =>
+                                            updateInvestment({
+                                                spouseTotalAssets: { ...investment.spouseTotalAssets, other: Number(e.target.value) },
+                                            })
+                                        }
+                                    />
+                                    <span className="text-sm text-muted-foreground whitespace-nowrap">万円</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="pt-4 border-t text-right font-medium">
+                            配偶者資産額: {(investment.spouseTotalAssets.savings + investment.spouseTotalAssets.stocksAndFunds + investment.spouseTotalAssets.other).toLocaleString()} 万円
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
             {/* 積立・拠出 */}
             <Card>
@@ -92,71 +159,137 @@ export function InvestmentForm() {
                     <CardTitle className="text-lg">毎月の積立・運用設定</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    <div className="space-y-2">
-                        <Label htmlFor="monthlyInvestment">
-                            毎月の積立投資額
-                            <FormTooltip text="新NISAや特定口座などの毎月の積立額合計を入力してください。シミュレーションで資産運用に回されます。" />
-                        </Label>
-                        <div className="flex items-center gap-3">
-                            <Input
-                                id="monthlyInvestment"
-                                type="number"
-                                min={0}
-                                max={100}
-                                value={investment.monthlyInvestment}
-                                onChange={(e) => updateInvestment({ monthlyInvestment: Number(e.target.value) })}
-                                className="w-24"
-                            />
-                            <span className="text-sm text-muted-foreground">万円/月</span>
+                    {/* ご本人分 */}
+                    <div className="space-y-6">
+                        <h3 className="font-semibold text-primary/80">ご本人の設定</h3>
+                        <div className="space-y-2 pl-4 border-l-2 border-muted">
+                            <Label htmlFor="selfMonthlyInvestment">
+                                毎月の積立投資額
+                                <FormTooltip text="新NISAや特定口座などの毎月の積立額合計を入力してください。シミュレーションで資産運用に回されます。" />
+                            </Label>
+                            <div className="flex items-center gap-3">
+                                <Input
+                                    id="selfMonthlyInvestment"
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    value={investment.selfMonthlyInvestment}
+                                    onChange={(e) => updateInvestment({ selfMonthlyInvestment: Number(e.target.value) })}
+                                    className="w-24"
+                                />
+                                <span className="text-sm text-muted-foreground">万円/月</span>
+                            </div>
                         </div>
-                    </div>
 
-                    <div className="flex items-center justify-between pt-2">
-                        <Label htmlFor="nisaEnabled">
-                            NISA制度を利用している
-                        </Label>
-                        <Switch
-                            id="nisaEnabled"
-                            checked={investment.nisaEnabled}
-                            onCheckedChange={(checked) => updateInvestment({ nisaEnabled: checked })}
-                        />
-                    </div>
+                        <div className="flex items-center justify-between pt-2 pl-4 border-l-2 border-muted">
+                            <Label htmlFor="selfNisaEnabled">NISA制度を利用している</Label>
+                            <Switch
+                                id="selfNisaEnabled"
+                                checked={investment.selfNisaEnabled}
+                                onCheckedChange={(checked) => updateInvestment({ selfNisaEnabled: checked })}
+                            />
+                        </div>
 
-                    {investment.nisaEnabled && (
-                        <div className="space-y-2 pl-4 border-l-2 border-primary/20">
-                            <Label>年間の想定NISA投資額</Label>
+                        {investment.selfNisaEnabled && (
+                            <div className="space-y-2 pl-8 border-l-2 border-primary/20">
+                                <Label>年間の想定NISA投資額</Label>
+                                <div className="flex items-center gap-3">
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        max={360}
+                                        value={investment.selfNisaAnnualAmount}
+                                        onChange={(e) => updateInvestment({ selfNisaAnnualAmount: Number(e.target.value) })}
+                                        className="w-24"
+                                    />
+                                    <span className="text-sm text-muted-foreground">万円/年</span>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="space-y-2 pt-2 pl-4 border-l-2 border-muted border-t-transparent">
+                            <Label>
+                                iDeCo（個人型確定拠出年金）の月額掛金
+                                <FormTooltip text="所得控除に反映され、60歳まで引き出しできません。" />
+                            </Label>
                             <div className="flex items-center gap-3">
                                 <Input
                                     type="number"
                                     min={0}
-                                    max={360}
-                                    value={investment.nisaAnnualAmount}
-                                    onChange={(e) => updateInvestment({ nisaAnnualAmount: Number(e.target.value) })}
+                                    max={6.8}
+                                    step={0.1}
+                                    value={investment.selfIdecoMonthly}
+                                    onChange={(e) => updateInvestment({ selfIdecoMonthly: Number(e.target.value) })}
                                     className="w-24"
                                 />
-                                <span className="text-sm text-muted-foreground">万円/年</span>
+                                <span className="text-sm text-muted-foreground">万円/月</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 配偶者分 */}
+                    {input.basicInfo.hasSpouse && (
+                        <div className="space-y-6 pt-6 border-t">
+                            <h3 className="font-semibold text-primary/80">配偶者の設定</h3>
+                            <div className="space-y-2 pl-4 border-l-2 border-muted">
+                                <Label htmlFor="spouseMonthlyInvestment">毎月の積立投資額</Label>
+                                <div className="flex items-center gap-3">
+                                    <Input
+                                        id="spouseMonthlyInvestment"
+                                        type="number"
+                                        min={0}
+                                        max={100}
+                                        value={investment.spouseMonthlyInvestment}
+                                        onChange={(e) => updateInvestment({ spouseMonthlyInvestment: Number(e.target.value) })}
+                                        className="w-24"
+                                    />
+                                    <span className="text-sm text-muted-foreground">万円/月</span>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-between pt-2 pl-4 border-l-2 border-muted">
+                                <Label htmlFor="spouseNisaEnabled">NISA制度を利用している</Label>
+                                <Switch
+                                    id="spouseNisaEnabled"
+                                    checked={investment.spouseNisaEnabled}
+                                    onCheckedChange={(checked) => updateInvestment({ spouseNisaEnabled: checked })}
+                                />
+                            </div>
+
+                            {investment.spouseNisaEnabled && (
+                                <div className="space-y-2 pl-8 border-l-2 border-primary/20">
+                                    <Label>年間の想定NISA投資額</Label>
+                                    <div className="flex items-center gap-3">
+                                        <Input
+                                            type="number"
+                                            min={0}
+                                            max={360}
+                                            value={investment.spouseNisaAnnualAmount}
+                                            onChange={(e) => updateInvestment({ spouseNisaAnnualAmount: Number(e.target.value) })}
+                                            className="w-24"
+                                        />
+                                        <span className="text-sm text-muted-foreground">万円/年</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="space-y-2 pt-2 pl-4 border-l-2 border-muted border-t-transparent">
+                                <Label>iDeCo（個人型確定拠出年金）の月額掛金</Label>
+                                <div className="flex items-center gap-3">
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        max={6.8}
+                                        step={0.1}
+                                        value={investment.spouseIdecoMonthly}
+                                        onChange={(e) => updateInvestment({ spouseIdecoMonthly: Number(e.target.value) })}
+                                        className="w-24"
+                                    />
+                                    <span className="text-sm text-muted-foreground">万円/月</span>
+                                </div>
                             </div>
                         </div>
                     )}
-
-                    <div className="space-y-2 pt-2 border-t">
-                        <Label>
-                            iDeCo（個人型確定拠出年金）の掛金
-                            <FormTooltip text="所得控除に反映され、60歳まで引き出しできません。" />
-                        </Label>
-                        <div className="flex items-center gap-3">
-                            <Input
-                                type="number"
-                                min={0}
-                                max={6.8}
-                                step={0.1}
-                                value={investment.idecoMonthly}
-                                onChange={(e) => updateInvestment({ idecoMonthly: Number(e.target.value) })}
-                                className="w-24"
-                            />
-                            <span className="text-sm text-muted-foreground">万円/月</span>
-                        </div>
-                    </div>
 
                     <div className="space-y-2 pt-2 border-t">
                         <Label htmlFor="investmentEndAge">

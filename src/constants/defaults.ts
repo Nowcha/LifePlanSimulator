@@ -20,6 +20,7 @@ export const DEFAULT_INPUT: SimulationInput = {
     },
 
     income: {
+        selfWorkPattern: 'fulltime',
         annualIncome: 450,
         salaryGrowthRate: 1.5,
         salaryGrowthCurve: 'seniority',
@@ -27,12 +28,29 @@ export const DEFAULT_INPUT: SimulationInput = {
         reemployment: {
             enabled: true,
             annualIncome: 300,
+            endAge: 70,
         },
-        spouseAnnualIncome: 0,
+        selfLeaveReturnAge: 35,
         spouseWorkPattern: 'fulltime',
+        spouseAnnualIncome: 0,
+        spouseSalaryGrowthRate: 1.5,
+        spouseSalaryGrowthCurve: 'seniority',
+        spouseRetirementAge: 65,
+        spouseReemployment: {
+            enabled: true,
+            annualIncome: 150,
+            endAge: 70,
+        },
+        spouseLeaveReturnAge: 35,
         sideJobIncome: 0,
         retirementBonus: 1500,
-        pension: {
+        spouseSideJobIncome: 0,
+        spouseRetirementBonus: 0,
+        selfPension: {
+            startAge: 65,
+            annualAmount: 0, // 0 = 自動計算
+        },
+        spousePension: {
             startAge: 65,
             annualAmount: 0, // 0 = 自動計算
         },
@@ -46,9 +64,12 @@ export const DEFAULT_INPUT: SimulationInput = {
             dailyNecessities: 2,
             allowanceAndOther: 8,
         },
+        customLivingCosts: [],
         housing: {
             type: 'rent',
             monthlyRent: 8,
+            renewalCycleYears: 2,
+            renewalCost: 8,
             mortgage: {
                 monthlyPayment: 10,
                 remainingYears: 30,
@@ -82,6 +103,11 @@ export const DEFAULT_INPUT: SimulationInput = {
             count: 1,
             replaceCycleYears: 7,
             purchaseCost: 250,
+            annualInsurance: 6,
+            annualTax: 4,
+            monthlyParking: 1.5,
+            annualMaintenance: 5,
+            monthlyGasFuel: 1,
         },
         insurance: {
             self: { life: 1, medical: 0.5, cancer: 0.5, other: 0 },
@@ -92,12 +118,18 @@ export const DEFAULT_INPUT: SimulationInput = {
     },
 
     investment: {
-        totalAssets: {
+        selfTotalAssets: {
             savings: 300,
             stocksAndFunds: 100,
             other: 0,
         },
-        monthlyInvestment: 3,
+        spouseTotalAssets: {
+            savings: 0,
+            stocksAndFunds: 0,
+            other: 0,
+        },
+        selfMonthlyInvestment: 3,
+        spouseMonthlyInvestment: 0,
         assetAllocation: {
             domesticStocks: 25,
             foreignStocks: 35,
@@ -106,9 +138,12 @@ export const DEFAULT_INPUT: SimulationInput = {
             reit: 10,
             cash: 10,
         },
-        nisaEnabled: true,
-        nisaAnnualAmount: 36,
-        idecoMonthly: 2.3,
+        selfNisaEnabled: true,
+        selfNisaAnnualAmount: 36,
+        spouseNisaEnabled: false,
+        spouseNisaAnnualAmount: 0,
+        selfIdecoMonthly: 2.3,
+        spouseIdecoMonthly: 0,
         investmentEndAge: 65,
         expectedReturn: 0, // 0 = 自動計算
         withdrawalMethod: 'fixed_rate',

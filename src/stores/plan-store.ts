@@ -126,7 +126,7 @@ export const usePlanStore = create<PlanStore>()(
             reset: () => set({ input: DEFAULT_INPUT, currentStep: 0, result: null }),
         }),
         {
-            name: 'lifeplan-storage',
+            name: 'lifeplan-storage-v2',
         }
     )
 );

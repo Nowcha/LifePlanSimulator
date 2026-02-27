@@ -15,6 +15,7 @@ import type { YearlyRecord } from '@/types/plan';
 export function Dashboard() {
     const { result, reset, isSimulating } = usePlanStore();
     const [breakdownScenario, setBreakdownScenario] = useState<'standard' | 'optimistic' | 'pessimistic'>('standard');
+    const [assetScenario, setAssetScenario] = useState<'standard' | 'optimistic' | 'pessimistic'>('standard');
     const [selectedRecord, setSelectedRecord] = useState<YearlyRecord | null>(null);
 
     const handleEdit = () => {
@@ -103,7 +104,14 @@ export function Dashboard() {
     if (!result) return null;
 
     const std = result.standard;
+    const opt = result.optimistic;
+    const pes = result.pessimistic;
     const isBankrupt = std.bankruptAge !== null;
+
+    const scenarioLabel = (s: typeof std) => {
+        if (s.bankruptAge !== null) return `${s.bankruptAge} 歳で資金不足`;
+        return '100歳まで安泰';
+    };
 
     return (
         <div className="space-y-8 w-full animate-in fade-in duration-500">
@@ -128,9 +136,18 @@ export function Dashboard() {
                     <CardHeader className="pb-2">
                         <CardTitle className="text-sm font-medium text-muted-foreground">シミュレーション結果</CardTitle>
                     </CardHeader>
-                    <CardContent>
-                        <div className={`text-3xl font-bold ${isBankrupt ? 'text-destructive' : 'text-emerald-500'}`}>
-                            {isBankrupt ? `${std.bankruptAge} 歳で枯渇` : '100歳まで安泰'}
+                    <CardContent className="space-y-1">
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-xs text-muted-foreground w-8">楽観</span>
+                            <span className={`text-sm font-semibold ${opt.bankruptAge !== null ? 'text-destructive' : 'text-emerald-500'}`}>{scenarioLabel(opt)}</span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-xs text-muted-foreground w-8">標準</span>
+                            <span className={`text-lg font-bold ${isBankrupt ? 'text-destructive' : 'text-emerald-500'}`}>{scenarioLabel(std)}</span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-xs text-muted-foreground w-8">悲観</span>
+                            <span className={`text-sm font-semibold ${pes.bankruptAge !== null ? 'text-destructive' : 'text-emerald-500'}`}>{scenarioLabel(pes)}</span>
                         </div>
                         {result.monteCarlo && (
                             <p className="text-xs text-muted-foreground mt-1">
@@ -144,25 +161,41 @@ export function Dashboard() {
                     <CardHeader className="pb-2">
                         <CardTitle className="text-sm font-medium text-muted-foreground">最高資産残高</CardTitle>
                     </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold flex items-baseline gap-1">
-                            <span className="text-base font-normal text-muted-foreground">標準シナリオ：</span>
-                            {Math.floor(std.peakAssets).toLocaleString()} <span className="text-lg font-normal">万円</span>
+                    <CardContent className="space-y-1">
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-xs text-muted-foreground w-8">楽観</span>
+                            <span className="text-sm font-semibold">{Math.floor(opt.peakAssets).toLocaleString()} 万円</span>
+                            <span className="text-xs text-muted-foreground">({opt.peakAssetsAge}歳)</span>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            {std.peakAssetsAge} 歳時点
-                        </p>
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-xs text-muted-foreground w-8">標準</span>
+                            <span className="text-lg font-bold">{Math.floor(std.peakAssets).toLocaleString()} 万円</span>
+                            <span className="text-xs text-muted-foreground">({std.peakAssetsAge}歳)</span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-xs text-muted-foreground w-8">悲観</span>
+                            <span className="text-sm font-semibold">{Math.floor(pes.peakAssets).toLocaleString()} 万円</span>
+                            <span className="text-xs text-muted-foreground">({pes.peakAssetsAge}歳)</span>
+                        </div>
                     </CardContent>
                 </Card>
 
                 <Card>
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">シミュレーション終了年齢時資産</CardTitle>
+                        <CardTitle className="text-sm font-medium text-muted-foreground">シミュレーション終了時資産残高</CardTitle>
                     </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold flex items-baseline gap-1">
-                            <span className="text-base font-normal text-muted-foreground">標準シナリオ：</span>
-                            {Math.floor(std.records[std.records.length - 1].totalAssets).toLocaleString()} <span className="text-lg font-normal">万円</span>
+                    <CardContent className="space-y-1">
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-xs text-muted-foreground w-8">楽観</span>
+                            <span className="text-sm font-semibold">{Math.floor(opt.records[opt.records.length - 1].totalAssets).toLocaleString()} 万円</span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-xs text-muted-foreground w-8">標準</span>
+                            <span className="text-lg font-bold">{Math.floor(std.records[std.records.length - 1].totalAssets).toLocaleString()} 万円</span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-xs text-muted-foreground w-8">悲観</span>
+                            <span className="text-sm font-semibold">{Math.floor(pes.records[pes.records.length - 1].totalAssets).toLocaleString()} 万円</span>
                         </div>
                     </CardContent>
                 </Card>
@@ -180,9 +213,16 @@ export function Dashboard() {
                 <TabsContent value="charts" className="space-y-8 animate-in fade-in">
                     {/* 資産推移グラフ */}
                     <Card>
-                        <CardHeader>
-                            <CardTitle>資産残高推移</CardTitle>
-                            <CardDescription>年齢ごとの保有資産額の推移（シナリオ別）</CardDescription>
+                        <CardHeader className="flex flex-row items-start justify-between pb-2">
+                            <div>
+                                <CardTitle>資産残高推移 ({assetScenario === 'standard' ? '標準' : assetScenario === 'optimistic' ? '楽観' : '悲観'}シナリオ)</CardTitle>
+                                <CardDescription>年齢ごとの保有資産額の推移</CardDescription>
+                            </div>
+                            <div className="flex gap-2">
+                                <Button size="sm" variant={assetScenario === 'optimistic' ? 'default' : 'outline'} onClick={() => setAssetScenario('optimistic')}>楽観</Button>
+                                <Button size="sm" variant={assetScenario === 'standard' ? 'default' : 'outline'} onClick={() => setAssetScenario('standard')}>標準</Button>
+                                <Button size="sm" variant={assetScenario === 'pessimistic' ? 'default' : 'outline'} onClick={() => setAssetScenario('pessimistic')}>悲観</Button>
+                            </div>
                         </CardHeader>
                         <CardContent>
                             <div className="h-[400px] w-full mt-4">
@@ -212,9 +252,7 @@ export function Dashboard() {
                                                 labelFormatter={(label) => `${label} 歳`}
                                             />
                                             <Legend />
-                                            <Line type="monotone" dataKey="optimistic" stroke="#10b981" strokeWidth={2} dot={false} strokeDasharray="5 5" name="楽観シナリオ" />
-                                            <Line type="monotone" dataKey="standard" stroke="#3b82f6" strokeWidth={3} dot={false} name="標準シナリオ" />
-                                            <Line type="monotone" dataKey="pessimistic" stroke="#ef4444" strokeWidth={2} dot={false} strokeDasharray="5 5" name="悲観シナリオ" />
+                                            <Line type="monotone" dataKey={assetScenario} stroke="#3b82f6" strokeWidth={3} dot={false} name={`${assetScenario === 'standard' ? '標準' : assetScenario === 'optimistic' ? '楽観' : '悲観'}シナリオ`} />
                                         </LineChart>
                                     )}
                                 </ResponsiveContainer>
@@ -361,7 +399,8 @@ export function Dashboard() {
                                     <div className="flex justify-between"><span>基本給与 (本人)</span><span>{Math.floor(selectedRecord.salary).toLocaleString()} 万円</span></div>
                                     <div className="flex justify-between"><span>給与 (配偶者)</span><span>{Math.floor(selectedRecord.spouseSalary).toLocaleString()} 万円</span></div>
                                     {selectedRecord.sideJob > 0 && <div className="flex justify-between"><span>副業収入</span><span>{Math.floor(selectedRecord.sideJob).toLocaleString()} 万円</span></div>}
-                                    {selectedRecord.pension > 0 && <div className="flex justify-between"><span>公的年金</span><span>{Math.floor(selectedRecord.pension).toLocaleString()} 万円</span></div>}
+                                    {selectedRecord.selfPension > 0 && <div className="flex justify-between"><span>公的年金 (本人)</span><span>{Math.floor(selectedRecord.selfPension).toLocaleString()} 万円</span></div>}
+                                    {selectedRecord.spousePension > 0 && <div className="flex justify-between"><span>公的年金 (配偶者)</span><span>{Math.floor(selectedRecord.spousePension).toLocaleString()} 万円</span></div>}
                                     {selectedRecord.otherIncome > 0 && <div className="flex justify-between text-emerald-600 font-medium"><span>一時所得・退職金等</span><span>{Math.floor(selectedRecord.otherIncome).toLocaleString()} 万円</span></div>}
                                     {selectedRecord.investmentWithdrawal > 0 && <div className="flex justify-between text-red-500 font-medium"><span>投資取り崩し資金</span><span>{Math.floor(selectedRecord.investmentWithdrawal).toLocaleString()} 万円</span></div>}
                                     <div className="flex justify-between font-bold pt-2 border-t mt-1"><span>総収入</span><span>{Math.floor(selectedRecord.totalIncome).toLocaleString()} 万円</span></div>
@@ -434,14 +473,34 @@ export function Dashboard() {
                                 <div className="space-y-1 text-sm">
                                     {selectedRecord.taxDetails && (
                                         <>
-                                            <div className="flex justify-between text-muted-foreground text-xs"><span>給与等所得控除</span><span>{Math.floor(selectedRecord.taxDetails.salaryDeduction + selectedRecord.taxDetails.pensionDeduction).toLocaleString()} 万円</span></div>
-                                            <div className="flex justify-between text-muted-foreground text-xs pb-1 border-b mb-1"><span>基礎・各種控除合計</span><span>{Math.floor(selectedRecord.taxDetails.totalDeductions).toLocaleString()} 万円</span></div>
-                                            <div className="flex justify-between text-muted-foreground text-xs mb-2"><span>(参考) 課税所得額</span><span>{Math.floor(selectedRecord.taxDetails.taxableIncome).toLocaleString()} 万円</span></div>
+                                            <div className="text-xs font-semibold text-muted-foreground/80 mb-1">本人分</div>
+                                            <div className="flex justify-between text-muted-foreground text-xs"><span>給与等所得控除</span><span>{Math.floor(selectedRecord.taxDetails.self.salaryDeduction + selectedRecord.taxDetails.self.pensionDeduction).toLocaleString()} 万円</span></div>
+                                            <div className="flex justify-between text-muted-foreground text-xs pb-1 border-b mb-1"><span>基礎・各種控除合計</span><span>{Math.floor(selectedRecord.taxDetails.self.totalDeductions).toLocaleString()} 万円</span></div>
+                                            <div className="flex justify-between text-muted-foreground text-xs mb-1"><span>(参考) 課税所得額</span><span>{Math.floor(selectedRecord.taxDetails.self.taxableIncome).toLocaleString()} 万円</span></div>
+
+                                            <div className="flex justify-between"><span>所得税</span><span>{Math.floor(selectedRecord.taxDetails.self.incomeTax).toLocaleString()} 万円</span></div>
+                                            <div className="flex justify-between"><span>住民税</span><span>{Math.floor(selectedRecord.taxDetails.self.residentTax).toLocaleString()} 万円</span></div>
+                                            <div className="flex justify-between mb-2"><span>社会保険料</span><span>{Math.floor(selectedRecord.taxDetails.self.socialInsurance).toLocaleString()} 万円</span></div>
+
+                                            {selectedRecord.taxDetails.spouse && (selectedRecord.taxDetails.spouse.incomeTax > 0 || selectedRecord.taxDetails.spouse.residentTax > 0 || selectedRecord.taxDetails.spouse.socialInsurance > 0 || selectedRecord.taxDetails.spouse.salaryDeduction > 0) && (
+                                                <>
+                                                    <div className="text-xs font-semibold text-muted-foreground/80 mb-1 mt-3 pt-2 border-t">配偶者分</div>
+                                                    <div className="flex justify-between text-muted-foreground text-xs"><span>給与等所得控除</span><span>{Math.floor(selectedRecord.taxDetails.spouse.salaryDeduction + selectedRecord.taxDetails.spouse.pensionDeduction).toLocaleString()} 万円</span></div>
+                                                    <div className="flex justify-between text-muted-foreground text-xs pb-1 border-b mb-1"><span>基礎・各種控除合計</span><span>{Math.floor(selectedRecord.taxDetails.spouse.totalDeductions).toLocaleString()} 万円</span></div>
+                                                    <div className="flex justify-between text-muted-foreground text-xs mb-1"><span>(参考) 課税所得額</span><span>{Math.floor(selectedRecord.taxDetails.spouse.taxableIncome).toLocaleString()} 万円</span></div>
+
+                                                    <div className="flex justify-between"><span>所得税</span><span>{Math.floor(selectedRecord.taxDetails.spouse.incomeTax).toLocaleString()} 万円</span></div>
+                                                    <div className="flex justify-between"><span>住民税</span><span>{Math.floor(selectedRecord.taxDetails.spouse.residentTax).toLocaleString()} 万円</span></div>
+                                                    <div className="flex justify-between"><span>社会保険料</span><span>{Math.floor(selectedRecord.taxDetails.spouse.socialInsurance).toLocaleString()} 万円</span></div>
+                                                </>
+                                            )}
+
+                                            <div className="flex justify-between font-bold pt-2 border-t mt-2">
+                                                <span>合算計</span>
+                                                <span className="text-red-500">-{Math.floor(selectedRecord.incomeTax + selectedRecord.residentTax + selectedRecord.socialInsurance).toLocaleString()} 万円</span>
+                                            </div>
                                         </>
                                     )}
-                                    <div className="flex justify-between"><span>所得税</span><span>{Math.floor(selectedRecord.incomeTax).toLocaleString()} 万円</span></div>
-                                    <div className="flex justify-between"><span>住民税</span><span>{Math.floor(selectedRecord.residentTax).toLocaleString()} 万円</span></div>
-                                    <div className="flex justify-between"><span>社会保険料</span><span>{Math.floor(selectedRecord.socialInsurance).toLocaleString()} 万円</span></div>
                                 </div>
                             </div>
 

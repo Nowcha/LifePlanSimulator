@@ -31,7 +31,8 @@ export function runSimulation(input: SimulationInput): SimulationResult {
         }
 
         // 初期資産
-        const initialAssets = input.investment.totalAssets.savings + input.investment.totalAssets.stocksAndFunds + input.investment.totalAssets.other;
+        const initialAssets = input.investment.selfTotalAssets.savings + input.investment.selfTotalAssets.stocksAndFunds + input.investment.selfTotalAssets.other +
+            (input.basicInfo.hasSpouse ? (input.investment.spouseTotalAssets.savings + input.investment.spouseTotalAssets.stocksAndFunds + input.investment.spouseTotalAssets.other) : 0);
 
         monteCarlo = runMonteCarloSimulation({
             initialAssets,
@@ -75,9 +76,11 @@ function runScenario(input: SimulationInput, scenarioType: keyof typeof SCENARIO
     // 最終的に0未満や過度なリターンを防ぐ処理があればここで行う（任意）
     // const returnMultiplier = 1 + (returnRate / 100);
 
-    // 初期資産
-    let currentSavingsBalance = input.investment.totalAssets.savings;
-    let currentInvestmentBalance = input.investment.totalAssets.stocksAndFunds + input.investment.totalAssets.other;
+    // 初期資産（本人と配偶者の合算をまずは世帯の共有資産として扱うか、個別に管理するか。ここでは世帯合算としてシミュレーション）
+    // ※今回は「各入力項目を本人/配偶者で分ける」要件に基づき入力は分けたが、
+    // シミュレーション上の財布（キャッシュフロー・残高）は従来通り世帯合算で処理します
+    let currentSavingsBalance = input.investment.selfTotalAssets.savings + (input.basicInfo.hasSpouse ? input.investment.spouseTotalAssets.savings : 0);
+    let currentInvestmentBalance = input.investment.selfTotalAssets.stocksAndFunds + input.investment.selfTotalAssets.other + (input.basicInfo.hasSpouse ? (input.investment.spouseTotalAssets.stocksAndFunds + input.investment.spouseTotalAssets.other) : 0);
 
     // 住宅ローン初期残高
     let remainingMortgageBalance = 0;
@@ -110,55 +113,101 @@ function runScenario(input: SimulationInput, scenarioType: keyof typeof SCENARIO
         const prevInvestmentBalance = currentInvestmentBalance;
 
         // --- 収入計算 ---
-        let salary = calculateAgeBasedSalary(
-            input.income.annualIncome,
-            startAge,
-            age,
-            input.income.salaryGrowthRate,
-            input.income.salaryGrowthCurve,
-            input.income.retirementAge,
-            input.income.reemployment.enabled ? input.income.reemployment.annualIncome : 0
-        );
+        let salary = 0;
+        if (input.income.selfWorkPattern !== 'homemaker') {
+            salary = calculateAgeBasedSalary(
+                input.income.annualIncome,
+                startAge,
+                age,
+                input.income.salaryGrowthRate,
+                input.income.salaryGrowthCurve,
+                input.income.retirementAge,
+                input.income.reemployment.enabled ? input.income.reemployment.annualIncome : 0,
+                input.income.reemployment.endAge,
+                input.income.selfWorkPattern === 'leave_return' ? input.income.selfLeaveReturnAge : 0
+            );
+        }
 
         let spouseSalary = 0;
         if (input.basicInfo.hasSpouse) {
             let spouseCurrentAge = input.basicInfo.spouseAge + yearIndex;
-            // 配偶者の収入推移 (簡易的に一定とするか、主夫/主婦の場合は0にするなど)
-            if (input.income.spouseWorkPattern !== 'homemaker' && spouseCurrentAge < input.income.retirementAge) {
-                spouseSalary = input.income.spouseAnnualIncome;
+            // 配偶者の収入推移 (個別に昇給カーブ計算)
+            if (input.income.spouseWorkPattern !== 'homemaker') {
+                spouseSalary = calculateAgeBasedSalary(
+                    input.income.spouseAnnualIncome,
+                    input.basicInfo.spouseAge,
+                    spouseCurrentAge,
+                    input.income.spouseSalaryGrowthRate,
+                    input.income.spouseSalaryGrowthCurve,
+                    input.income.spouseRetirementAge,
+                    input.income.spouseReemployment.enabled ? input.income.spouseReemployment.annualIncome : 0,
+                    input.income.spouseReemployment.endAge,
+                    input.income.spouseWorkPattern === 'leave_return' ? input.income.spouseLeaveReturnAge : 0
+                );
             }
         }
 
-        let pension = 0;
-        if (age >= input.income.pension.startAge) {
-            if (input.income.pension.annualAmount > 0) {
-                pension = input.income.pension.annualAmount;
+        let selfPension = 0;
+        if (age >= input.income.selfPension.startAge) {
+            if (input.income.selfPension.annualAmount > 0) {
+                selfPension = input.income.selfPension.annualAmount;
             } else {
                 // 自動計算
-                const myPension = estimateAnnualPension(input.income.annualIncome, 480, true);
-                const spousePension = input.basicInfo.hasSpouse ? estimateAnnualPension(input.income.spouseAnnualIncome || 0, 480, input.income.spouseWorkPattern === 'fulltime') : 0;
-                pension = myPension + spousePension;
-
-                // 年金減額シナリオ適用
-                if (input.scenario.pensionReduction === 'reduce_20') pension *= 0.8;
-                if (input.scenario.pensionReduction === 'reduce_30') pension *= 0.7;
+                selfPension = estimateAnnualPension(input.income.annualIncome, 480, true);
+                if (input.scenario.pensionReduction === 'reduce_20') selfPension *= 0.8;
+                if (input.scenario.pensionReduction === 'reduce_30') selfPension *= 0.7;
             }
         }
 
-        // 副業
+        let spousePension = 0;
+        if (input.basicInfo.hasSpouse) {
+            let spouseCurrentAge = input.basicInfo.spouseAge + yearIndex;
+            if (spouseCurrentAge >= input.income.spousePension.startAge) {
+                if (input.income.spousePension.annualAmount > 0) {
+                    spousePension = input.income.spousePension.annualAmount;
+                } else {
+                    spousePension = estimateAnnualPension(input.income.spouseAnnualIncome || 0, 480, input.income.spouseWorkPattern === 'fulltime');
+                    if (input.scenario.pensionReduction === 'reduce_20') spousePension *= 0.8;
+                    if (input.scenario.pensionReduction === 'reduce_30') spousePension *= 0.7;
+                }
+            }
+        }
+
+        // 副業（本人）
         let sideJob = (age <= input.income.retirementAge || input.income.reemployment.enabled) ? input.income.sideJobIncome : 0;
+        // 副業（配偶者）
+        if (input.basicInfo.hasSpouse) {
+            const spouseCurrentAge = input.basicInfo.spouseAge + yearIndex;
+            if (spouseCurrentAge <= input.income.spouseRetirementAge || input.income.spouseReemployment.enabled) {
+                sideJob += input.income.spouseSideJobIncome || 0;
+            }
+        }
 
         // 退職金加算
         let otherIncome = 0;
         if (age === input.income.retirementAge) {
             otherIncome += input.income.retirementBonus;
         }
+        // 配偶者の退職金
+        if (input.basicInfo.hasSpouse) {
+            const spouseCurrentAge = input.basicInfo.spouseAge + yearIndex;
+            if (spouseCurrentAge === input.income.spouseRetirementAge) {
+                otherIncome += input.income.spouseRetirementBonus || 0;
+            }
+        }
 
         // 投資・運用枠への毎年の拠出額 (NISA/iDeCo等 月額合計×12)
-        // 積立終了年齢を超えている場合は新たな拠出を行わない
-        const annualInvestmentAmount = age <= input.investment.investmentEndAge
-            ? (input.investment.monthlyInvestment * 12) + (input.investment.idecoMonthly * 12)
-            : 0;
+        // 世帯合算で積立額を導出（本人の積立終了年齢を基準に、または配偶者年齢も加味する運用とする）
+        let annualInvestmentAmount = 0;
+        if (age <= input.investment.investmentEndAge) {
+            annualInvestmentAmount += (input.investment.selfMonthlyInvestment * 12) + (input.investment.selfIdecoMonthly * 12);
+        }
+        if (input.basicInfo.hasSpouse) {
+            let spouseCurrentAge = input.basicInfo.spouseAge + yearIndex;
+            if (spouseCurrentAge <= input.investment.investmentEndAge) {
+                annualInvestmentAmount += (input.investment.spouseMonthlyInvestment * 12) + (input.investment.spouseIdecoMonthly * 12);
+            }
+        }
 
         // 投資リターンの計算 (前年末の投資資産残高にかかる)
         let investmentReturn = currentInvestmentBalance > 0 ? currentInvestmentBalance * (returnRate / 100) : 0;
@@ -169,11 +218,8 @@ function runScenario(input: SimulationInput, scenarioType: keyof typeof SCENARIO
         // インフレ率の考慮 (生活費などを名目で増やす)
         const inflationMultiplier = Math.pow(1 + (input.scenario.inflationRate / 100), yearIndex);
 
-        // ※改修フェーズ9: インフレを収入（給与・副業等）に適用しない。
-        // （昇給率や年齢ベースの給与変動のみで決定）
-
         // 運用益（investmentReturn）は再投資として残高にのみ足すため、総収入（キャッシュフロー上）には含めない
-        let totalIncome = salary + spouseSalary + pension + sideJob + otherIncome;
+        let totalIncome = salary + spouseSalary + selfPension + spousePension + sideJob + otherIncome;
 
         // --- 支出計算 ---
 
@@ -208,7 +254,9 @@ function runScenario(input: SimulationInput, scenarioType: keyof typeof SCENARIO
 
         // 基本生活費
         const livingCostMonthly = Object.values(input.expense.monthlyLivingCost).reduce((a, b) => a + b, 0);
-        const livingCost = (livingCostMonthly * 12 * inflationMultiplier) + childAdditionalLivingCost;
+        // カスタム生活費の合計を加算
+        const customLivingCostMonthly = (input.expense.customLivingCosts || []).reduce((a, item) => a + item.amount, 0);
+        const livingCost = ((livingCostMonthly + customLivingCostMonthly) * 12 * inflationMultiplier) + childAdditionalLivingCost;
         const basicLivingDetails = {
             food: (input.expense.monthlyLivingCost.food * 12) * inflationMultiplier,
             utilities: (input.expense.monthlyLivingCost.utilities * 12) * inflationMultiplier,
@@ -237,6 +285,13 @@ function runScenario(input: SimulationInput, scenarioType: keyof typeof SCENARIO
             const rentCost = (input.expense.housing.monthlyRent * 12) * inflationMultiplier;
             housingCost += rentCost;
             housingDetails.rent += rentCost;
+            // 賃貸更新費用
+            const renewalCycle = input.expense.housing.renewalCycleYears || 2;
+            if (renewalCycle > 0 && yearIndex > 0 && yearIndex % renewalCycle === 0) {
+                const renewalCost = (input.expense.housing.renewalCost || 0) * inflationMultiplier;
+                housingCost += renewalCost;
+                housingDetails.rent += renewalCost;
+            }
         } else if (input.expense.housing.type === 'own_with_loan') {
             if (remainingMortgageBalance > 0) {
                 const annualPmt = input.expense.housing.mortgage.monthlyPayment * 12;
@@ -268,8 +323,20 @@ function runScenario(input: SimulationInput, scenarioType: keyof typeof SCENARIO
 
         // 車両費
         let carCost = 0;
-        if (input.expense.car.enabled && yearIndex % input.expense.car.replaceCycleYears === 0 && yearIndex > 0) {
-            carCost = (input.expense.car.purchaseCost * input.expense.car.count) * inflationMultiplier;
+        if (input.expense.car.enabled) {
+            // 購入費（買替サイクルごと）
+            if (yearIndex % input.expense.car.replaceCycleYears === 0 && yearIndex > 0) {
+                carCost += (input.expense.car.purchaseCost * input.expense.car.count) * inflationMultiplier;
+            }
+            // 毎年の維持費
+            const annualMaintenanceCost = (
+                (input.expense.car.annualInsurance || 0) +
+                (input.expense.car.annualTax || 0) +
+                ((input.expense.car.monthlyParking || 0) * 12) +
+                (input.expense.car.annualMaintenance || 0) +
+                ((input.expense.car.monthlyGasFuel || 0) * 12)
+            ) * input.expense.car.count * inflationMultiplier;
+            carCost += annualMaintenanceCost;
         }
 
         let lifeEventCost = 0;
@@ -285,19 +352,58 @@ function runScenario(input: SimulationInput, scenarioType: keyof typeof SCENARIO
 
         // --- 税金・社保 ---
         const taxDependents = childrenAges.map(a => ({ age: a + yearIndex })).filter(d => d.age >= 16);
-        const taxResult = calculateTaxes({
+
+        // 本人分の税金
+        const selfTaxResult = calculateTaxes({
             salaryIncomeManYen: salary + sideJob,
-            pensionIncomeManYen: pension,
+            pensionIncomeManYen: selfPension,
             age: age,
-            hasSpouse: input.basicInfo.hasSpouse,
-            spouseIncomeManYen: spouseSalary,
+            hasSpouse: input.basicInfo.hasSpouse, // 本人から見て配偶者あり
+            spouseIncomeManYen: spouseSalary, // 配偶者控除判定用
             dependents: taxDependents
         });
 
-        const incomeTax = taxResult.incomeTax;
-        const residentTax = taxResult.residentTax;
-        const socialInsurance = taxResult.socialInsurance;
-        const taxDetails = taxResult.details;
+        // 配偶者分の税金
+        let spouseTaxResult = null;
+        if (input.basicInfo.hasSpouse) {
+            let spouseCurrentAge = input.basicInfo.spouseAge + yearIndex;
+            spouseTaxResult = calculateTaxes({
+                salaryIncomeManYen: spouseSalary,
+                pensionIncomeManYen: spousePension,
+                age: spouseCurrentAge,
+                hasSpouse: true,
+                spouseIncomeManYen: salary + sideJob, // 配偶者から見て本人の年収
+                dependents: [] // 簡易的に扶養は本人のみにつけると仮定
+            });
+        }
+
+        const incomeTax = selfTaxResult.incomeTax + (spouseTaxResult ? spouseTaxResult.incomeTax : 0);
+        const residentTax = selfTaxResult.residentTax + (spouseTaxResult ? spouseTaxResult.residentTax : 0);
+        const socialInsurance = selfTaxResult.socialInsurance + (spouseTaxResult ? spouseTaxResult.socialInsurance : 0);
+
+        const taxDetails = {
+            self: {
+                salaryDeduction: selfTaxResult.details.salaryDeduction,
+                pensionDeduction: selfTaxResult.details.pensionDeduction,
+                totalDeductions: selfTaxResult.details.totalDeductions,
+                taxableIncome: selfTaxResult.details.taxableIncome,
+                incomeTax: selfTaxResult.incomeTax,
+                residentTax: selfTaxResult.residentTax,
+                socialInsurance: selfTaxResult.socialInsurance,
+            },
+            spouse: spouseTaxResult ? {
+                salaryDeduction: spouseTaxResult.details.salaryDeduction,
+                pensionDeduction: spouseTaxResult.details.pensionDeduction,
+                totalDeductions: spouseTaxResult.details.totalDeductions,
+                taxableIncome: spouseTaxResult.details.taxableIncome,
+                incomeTax: spouseTaxResult.incomeTax,
+                residentTax: spouseTaxResult.residentTax,
+                socialInsurance: spouseTaxResult.socialInsurance,
+            } : {
+                salaryDeduction: 0, pensionDeduction: 0, totalDeductions: 0, taxableIncome: 0,
+                incomeTax: 0, residentTax: 0, socialInsurance: 0
+            }
+        };
 
         // --- 収支・残高計算 ---
         let netIncome = totalIncome - socialInsurance - incomeTax - residentTax;
@@ -353,7 +459,7 @@ function runScenario(input: SimulationInput, scenarioType: keyof typeof SCENARIO
         lifetimeExpense += totalExpense;
 
         records.push({
-            age, year, salary, spouseSalary, pension, investmentReturn, sideJob, otherIncome, totalIncome,
+            age, year, salary, spouseSalary, selfPension, spousePension, investmentReturn, sideJob, otherIncome, totalIncome,
             livingCost, housingCost, educationCost, carCost, insuranceCost, travelCost, lifeEventCost, totalExpense,
             incomeTax, residentTax, socialInsurance, netIncome, balance,
             savingsBalance: currentSavingsBalance, investmentBalance: currentInvestmentBalance, totalAssets,

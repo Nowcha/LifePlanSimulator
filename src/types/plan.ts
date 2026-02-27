@@ -28,7 +28,7 @@ export interface BasicInfo {
 export type SalaryGrowthCurve = 'seniority' | 'performance' | 'flat';
 // 年功型 / 成果型 / フラット
 
-export type SpouseWorkPattern =
+export type WorkPattern =
     | 'fulltime'     // フルタイム
     | 'parttime'     // パート
     | 'homemaker'    // 専業主婦(夫)
@@ -37,6 +37,7 @@ export type SpouseWorkPattern =
 export interface ReemploymentInfo {
     enabled: boolean;
     annualIncome: number; // 万円
+    endAge: number;       // 再雇用終了年齢
 }
 
 export interface PensionInfo {
@@ -45,16 +46,29 @@ export interface PensionInfo {
 }
 
 export interface IncomeInfo {
-    annualIncome: number;        // 額面年収 (万円)
-    salaryGrowthRate: number;    // 昇給率 (%, e.g. 1.5)
+    selfWorkPattern: WorkPattern;
+    annualIncome: number;        // 本人の額面年収 (万円)
+    salaryGrowthRate: number;    // 本人の昇給率 (%, e.g. 1.5)
     salaryGrowthCurve: SalaryGrowthCurve;
-    retirementAge: number;       // 退職予定年齢
+    retirementAge: number;       // 本人の退職予定年齢
     reemployment: ReemploymentInfo;
-    spouseAnnualIncome: number;  // 配偶者の年収 (万円)
-    spouseWorkPattern: SpouseWorkPattern;
-    sideJobIncome: number;       // 副業収入 (万円/年)
-    retirementBonus: number;     // 退職金見込み額 (万円)
-    pension: PensionInfo;
+    selfLeaveReturnAge: number;  // 本人の復職開始年齢
+
+    spouseWorkPattern: WorkPattern;
+    spouseAnnualIncome: number;  // 配偶者の額面年収 (万円)
+    spouseSalaryGrowthRate: number; // 配偶者の昇給率 (%, e.g. 1.5)
+    spouseSalaryGrowthCurve: SalaryGrowthCurve;
+    spouseRetirementAge: number; // 配偶者の退職予定年齢
+    spouseReemployment: ReemploymentInfo;
+    spouseLeaveReturnAge: number; // 配偶者の復職開始年齢
+
+    sideJobIncome: number;       // 本人の副業収入 (万円/年)
+    retirementBonus: number;     // 本人の退職金見込み額 (万円)
+    spouseSideJobIncome: number; // 配偶者の副業収入 (万円/年)
+    spouseRetirementBonus: number; // 配偶者の退職金見込み額 (万円)
+
+    selfPension: PensionInfo;    // 本人の年金
+    spousePension: PensionInfo;  // 配偶者の年金
 }
 
 // ========== 支出 ==========
@@ -99,6 +113,11 @@ export interface CarInfo {
     count: number;
     replaceCycleYears: number;  // 買替サイクル (年)
     purchaseCost: number;       // 1台あたり購入費 (万円)
+    annualInsurance: number;    // 自動車保険 (万円/年)
+    annualTax: number;          // 自動車税 (万円/年)
+    monthlyParking: number;     // 駐車場代 (万円/月)
+    annualMaintenance: number;  // 車検・整備費 (万円/年、按分)
+    monthlyGasFuel: number;     // ガソリン・燃料費 (万円/月)
 }
 
 export interface LifeEvent {
@@ -111,6 +130,8 @@ export interface LifeEvent {
 export interface HousingInfo {
     type: HousingType;
     monthlyRent: number;            // 賃貸: 月額家賃 (万円)
+    renewalCycleYears: number;      // 賃貸: 更新頻度 (年)
+    renewalCost: number;            // 賃貸: 更新費用 (万円)
     mortgage: MortgageDetail;
     purchasePlan: HomePurchasePlan;
 }
@@ -121,6 +142,12 @@ export interface MonthlyLivingCost {
     communication: number;    // 通信費
     dailyNecessities: number; // 日用品
     allowanceAndOther: number;// お小遣い・その他
+}
+
+export interface CustomLivingCostItem {
+    id: string;
+    name: string;             // 項目名
+    amount: number;           // 月額 (万円)
 }
 
 export interface InsurancePremium {
@@ -137,6 +164,7 @@ export interface InsuranceConfig {
 
 export interface ExpenseInfo {
     monthlyLivingCost: MonthlyLivingCost;
+    customLivingCosts: CustomLivingCostItem[];
     housing: HousingInfo;
     educationPlan: EducationPlan;
     childRelatedCost: {
@@ -177,14 +205,24 @@ export interface DebtItem {
 }
 
 export interface InvestmentInfo {
-    totalAssets: AssetBreakdown;
-    monthlyInvestment: number;       // 毎月の積立投資額 (万円)
+    selfTotalAssets: AssetBreakdown;
+    spouseTotalAssets: AssetBreakdown;
+
+    selfMonthlyInvestment: number;       // 本人の毎月の積立投資額 (万円)
+    spouseMonthlyInvestment: number;     // 配偶者の毎月の積立投資額 (万円)
+
     assetAllocation: AssetAllocation;
-    nisaEnabled: boolean;
-    nisaAnnualAmount: number;        // NISA年間投資額 (万円)
-    idecoMonthly: number;            // iDeCo拠出額 (月額万円)
-    investmentEndAge: number;        // 積立終了年齢
-    expectedReturn: number;          // 期待リターン (年率%)、0 = 自動計算
+
+    selfNisaEnabled: boolean;
+    selfNisaAnnualAmount: number;        // 本人NISA年間投資額 (万円)
+    spouseNisaEnabled: boolean;
+    spouseNisaAnnualAmount: number;      // 配偶者NISA年間投資額 (万円)
+
+    selfIdecoMonthly: number;            // 本人iDeCo拠出額 (月額万円)
+    spouseIdecoMonthly: number;          // 配偶者iDeCo拠出額 (月額万円)
+
+    investmentEndAge: number;            // 積立終了年齢 (本人の年齢基準)
+    expectedReturn: number;              // 期待リターン (年率%)、0 = 自動計算
     withdrawalMethod: WithdrawalMethod;
     debts: DebtItem[];
 }
@@ -226,7 +264,8 @@ export interface YearlyRecord {
     // 収入内訳
     salary: number;
     spouseSalary: number;
-    pension: number;
+    selfPension: number;
+    spousePension: number;
     investmentReturn: number;
     sideJob: number;
     otherIncome: number;
@@ -260,10 +299,24 @@ export interface YearlyRecord {
     prevInvestmentBalance: number;
     annualInvestmentAmount: number;
     taxDetails?: {
-        salaryDeduction: number;
-        pensionDeduction: number;
-        totalDeductions: number;
-        taxableIncome: number;
+        self: {
+            salaryDeduction: number;
+            pensionDeduction: number;
+            totalDeductions: number;
+            taxableIncome: number;
+            incomeTax: number;
+            residentTax: number;
+            socialInsurance: number;
+        };
+        spouse: {
+            salaryDeduction: number;
+            pensionDeduction: number;
+            totalDeductions: number;
+            taxableIncome: number;
+            incomeTax: number;
+            residentTax: number;
+            socialInsurance: number;
+        };
     };
     expenseDetails?: {
         basicLiving?: {

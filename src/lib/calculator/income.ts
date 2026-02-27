@@ -18,12 +18,18 @@ export function calculateAgeBasedSalary(
     growthRatePercent: number,
     curve: SalaryGrowthCurve,
     retirementAge: number,
-    reemploymentAnnualIncome: number
+    reemploymentAnnualIncome: number,
+    reemploymentEndAge: number,
+    leaveReturnAge: number = 0
 ): number {
+    // 一時休職中（復職年齢に達していない場合）は給与0
+    if (leaveReturnAge > 0 && targetAge < leaveReturnAge) {
+        return 0;
+    }
     if (targetAge < currentAge) return baseSalaryManYen;
     if (targetAge >= retirementAge) {
-        // 退職後〜65歳までは再雇用期間として想定 (ここでは一律で再雇用年齢期間を計算)
-        if (targetAge >= retirementAge && targetAge < 65 && reemploymentAnnualIncome > 0) {
+        // 退職後〜指定の年齢までは再雇用期間として想定
+        if (targetAge >= retirementAge && targetAge < reemploymentEndAge && reemploymentAnnualIncome > 0) {
             return reemploymentAnnualIncome;
         }
         return 0; // 完全退職
