@@ -1,262 +1,375 @@
-// メインシミュレーションエンジン
-
-import type {
-    PlanInput, YearlyRecord, ScenarioResult, SimulationResult, ScenarioType,
-} from '@/types/plan';
-import { CURRENT_YEAR, SCENARIO_MODIFIERS } from '@/constants/defaults';
-import { getAnnualEducationCost } from '@/constants/education';
-import { calculateIncomeTax, calculateResidentTax } from './tax';
-import { calculateSocialInsurance } from './social-insurance';
-import { calculateAnnualMortgagePayment } from './mortgage';
-import { calculateInvestmentReturn } from './investment';
-import { runMonteCarlo } from './monte-carlo';
+import type { SimulationInput, SimulationResult, ScenarioResult, YearlyRecord } from '@/types/plan';
+import { calculateAgeBasedSalary } from '../calculator/income';
+import { calculateTaxes } from '../calculator/tax';
+import { calculateAnnualEducationCost, calculateAnnualMortgagePayment } from '../calculator/expense';
+import { estimateAnnualPension } from '../calculator/pension';
+// import { calculateWeightedReturn, calculateWithdrawalAmount } from '../calculator/investment';
+import { runMonteCarloSimulation } from '../calculator/montecarlo';
+import { SCENARIO_RETURNS, SCENARIO_VOLATILITY } from '@/constants/defaults';
 
 /**
- * 現在の年齢を計算
+ * 年間収支と資産推移のシミュレーションを実行する
  */
-function getAge(birthYear: number, birthMonth: number, targetYear: number): number {
-    // 簡易計算（月は考慮しない）
-    void birthMonth;
-    return targetYear - birthYear;
+export function runSimulation(input: SimulationInput): SimulationResult {
+    const optimistic = runScenario(input, 'optimistic');
+    const standard = runScenario(input, 'standard');
+    const pessimistic = runScenario(input, 'pessimistic');
+
+    let monteCarlo = null;
+    if (input.scenario.monteCarlo.enabled) {
+        // 投資を除いた毎年の純キャッシュフローの配列（標準シナリオベース）
+        const cashflowMap = standard.records.map(r => r.totalIncome - r.totalExpense - r.incomeTax - r.residentTax - r.socialInsurance);
+
+        // 期待リターン: アロケーションによる標準リターンが0以外ならそれを優先か、カスタム
+        let meanReturn: number;        // 期待リターンが明示的に設定されている場合はそれを採用（案B）
+        if (input.investment.expectedReturn > 0) {
+            meanReturn = input.investment.expectedReturn;
+        } else if (input.scenario.returnScenario === 'custom') {
+            meanReturn = input.scenario.customReturn;
+        } else {
+            meanReturn = SCENARIO_RETURNS[input.scenario.returnScenario as keyof typeof SCENARIO_RETURNS] ?? SCENARIO_RETURNS.standard;
+        }
+
+        // 初期資産
+        const initialAssets = input.investment.totalAssets.savings + input.investment.totalAssets.stocksAndFunds + input.investment.totalAssets.other;
+
+        monteCarlo = runMonteCarloSimulation({
+            initialAssets,
+            annualCashflowMap: cashflowMap,
+            startAge: input.basicInfo.currentAge,
+            endAge: input.basicInfo.simulationEndAge,
+            meanReturn,
+            volatility: SCENARIO_VOLATILITY.standard,
+            trials: input.scenario.monteCarlo.trials,
+        });
+    }
+
+    return { optimistic, standard, pessimistic, monteCarlo };
 }
 
-/**
- * 単一シミュレーション実行（年次リターンを外部から指定可能）
- */
-export function runSingleSimulation(
-    input: PlanInput,
-    yearlyReturns?: number[]
-): ScenarioResult {
-    const { basic, income, expense, investment, environment, config } = input;
-    const startAge = getAge(basic.birthYear, basic.birthMonth, CURRENT_YEAR);
-    const endAge = config.endAge;
+function runScenario(input: SimulationInput, scenarioType: keyof typeof SCENARIO_RETURNS): ScenarioResult {
     const records: YearlyRecord[] = [];
+    const startAge = input.basicInfo.currentAge;
+    const endAge = input.basicInfo.simulationEndAge;
+    const currentYear = new Date().getFullYear();
 
-    // 総資産の初期値
-    let totalAssets = investment.assets.reduce((sum, a) => sum + a.balance, 0);
-    let corpPensionBalance = income.corporatePension.balance;
+    // シナリオに応じた運用リターン    // 基本ルールの適用
+    let returnRate: number = SCENARIO_RETURNS[scenarioType];
 
-    const scenarioMod = SCENARIO_MODIFIERS[config.scenario];
-    const inflationRate = (scenarioMod.generalInflation ?? environment.generalInflation) / 100;
-    const wageGrowth = (scenarioMod.wageGrowthRate ?? environment.wageGrowthRate) / 100;
-    const returnModifier = scenarioMod.returnModifier;
+    // 期待リターン（手動入力）がある場合は、それを「標準シナリオ」のベースとする（案Bの実装）
+    if (input.investment.expectedReturn > 0) {
+        const baseReturn = input.investment.expectedReturn;
+        if (scenarioType === 'optimistic') returnRate = baseReturn + 2.0;
+        else if (scenarioType === 'pessimistic') returnRate = baseReturn - 2.0;
+        else returnRate = baseReturn; // standard
+    } else {
+        // 自動計算の場合も「標準シナリオ」のベースにする
+        // runSimulationで計算されたmeanReturnをrunScenarioに渡す必要があるが、現状渡されていないため、
+        // ここではinput.scenario.returnScenarioとSCENARIO_RETURNSを基に計算する
+        const baseReturn = input.scenario.returnScenario === 'custom' ? input.scenario.customReturn : SCENARIO_RETURNS[input.scenario.returnScenario as keyof typeof SCENARIO_RETURNS] ?? SCENARIO_RETURNS.standard;
+        if (scenarioType === 'optimistic') returnRate = baseReturn + 2.0;
+        else if (scenarioType === 'pessimistic') returnRate = baseReturn - 2.0;
+        else returnRate = baseReturn; // standard
+    }
 
-    let totalIncome = 0;
-    let totalExpense = 0;
-    let peakAssets = totalAssets;
-    let depletionAge: number | null = null;
+    // 最終的に0未満や過度なリターンを防ぐ処理があればここで行う（任意）
+    // const returnMultiplier = 1 + (returnRate / 100);
+
+    // 初期資産
+    let currentSavingsBalance = input.investment.totalAssets.savings;
+    let currentInvestmentBalance = input.investment.totalAssets.stocksAndFunds + input.investment.totalAssets.other;
+
+    // 住宅ローン初期残高
+    let remainingMortgageBalance = 0;
+    if (input.expense.housing.type === 'own_with_loan') {
+        remainingMortgageBalance = input.expense.housing.mortgage.remainingBalance;
+    } else if (input.expense.housing.purchasePlan.enabled) {
+        remainingMortgageBalance = input.expense.housing.purchasePlan.propertyPrice - input.expense.housing.purchasePlan.downPayment;
+    }
+
+    // 子どもの出産予定を統合した情報
+    const childrenAges = input.basicInfo.children.map(c => c.age);
+    if (input.basicInfo.futureBirth.enabled && input.basicInfo.futureBirth.count > 0) {
+        for (let i = 0; i < input.basicInfo.futureBirth.count; i++) {
+            childrenAges.push(-input.basicInfo.futureBirth.yearsFromNow - i); // i年ごとに生まれると仮定
+        }
+    }
+
+    let bankruptAge: number | null = null;
+    let lifetimeIncome = 0;
+    let lifetimeExpense = 0;
+    let peakAssets = currentSavingsBalance + currentInvestmentBalance;
+    let peakAssetsAge = startAge;
 
     for (let age = startAge; age <= endAge; age++) {
         const yearIndex = age - startAge;
-        const year = CURRENT_YEAR + yearIndex;
-        const events: string[] = [];
+        const year = currentYear + yearIndex;
 
-        // === 収入計算（税込） ===
-        let salary = 0;
-        if (age < income.employment.retirementAge) {
-            salary = income.employment.annualIncome * Math.pow(1 + wageGrowth, yearIndex);
-        } else if (age < income.employment.reemploymentEndAge) {
-            salary = income.employment.reemploymentIncome;
-            if (age === income.employment.retirementAge) events.push('定年退職');
-        }
+        // 当年の計算を始める前の残高を「前年残高」として記録
+        const prevSavingsBalance = currentSavingsBalance;
+        const prevInvestmentBalance = currentInvestmentBalance;
 
-        // 退職金
-        if (age === income.employment.retirementAge) {
-            salary += income.employment.severancePay;
-        }
+        // --- 収入計算 ---
+        let salary = calculateAgeBasedSalary(
+            input.income.annualIncome,
+            startAge,
+            age,
+            input.income.salaryGrowthRate,
+            input.income.salaryGrowthCurve,
+            input.income.retirementAge,
+            input.income.reemployment.enabled ? input.income.reemployment.annualIncome : 0
+        );
 
-        // 配偶者給与
         let spouseSalary = 0;
-        if (basic.hasSpouse) {
-            const spouseAge = getAge(basic.spouseBirthYear, basic.spouseBirthMonth, year);
-            if (spouseAge < income.spouseEmployment.retirementAge) {
-                spouseSalary = income.spouseEmployment.annualIncome * Math.pow(1 + wageGrowth, yearIndex);
-            } else if (spouseAge < income.spouseEmployment.reemploymentEndAge) {
-                spouseSalary = income.spouseEmployment.reemploymentIncome;
+        if (input.basicInfo.hasSpouse) {
+            let spouseCurrentAge = input.basicInfo.spouseAge + yearIndex;
+            // 配偶者の収入推移 (簡易的に一定とするか、主夫/主婦の場合は0にするなど)
+            if (input.income.spouseWorkPattern !== 'homemaker' && spouseCurrentAge < input.income.retirementAge) {
+                spouseSalary = input.income.spouseAnnualIncome;
             }
         }
 
-        // 年金
-        let pensionIncome = 0;
-        if (age >= income.pension.startAge) {
-            pensionIncome += income.pension.monthlyAmount * 12;
-            if (age === income.pension.startAge) events.push('年金受給開始');
-        }
-        if (basic.hasSpouse) {
-            const spouseAge = getAge(basic.spouseBirthYear, basic.spouseBirthMonth, year);
-            if (spouseAge >= income.spousePension.startAge) {
-                pensionIncome += income.spousePension.monthlyAmount * 12;
+        let pension = 0;
+        if (age >= input.income.pension.startAge) {
+            if (input.income.pension.annualAmount > 0) {
+                pension = input.income.pension.annualAmount;
+            } else {
+                // 自動計算
+                const myPension = estimateAnnualPension(input.income.annualIncome, 480, true);
+                const spousePension = input.basicInfo.hasSpouse ? estimateAnnualPension(input.income.spouseAnnualIncome || 0, 480, input.income.spouseWorkPattern === 'fulltime') : 0;
+                pension = myPension + spousePension;
+
+                // 年金減額シナリオ適用
+                if (input.scenario.pensionReduction === 'reduce_20') pension *= 0.8;
+                if (input.scenario.pensionReduction === 'reduce_30') pension *= 0.7;
             }
         }
 
-        // 企業年金/iDeCo
-        if (age < 60) {
-            corpPensionBalance += income.corporatePension.monthlyContribution * 12;
-            corpPensionBalance *= (1 + income.corporatePension.expectedReturn / 100);
-        }
-        if (age === 60 && corpPensionBalance > 0) {
-            totalAssets += corpPensionBalance;
-            events.push('企業年金/iDeCo受取');
-            corpPensionBalance = 0;
+        // 副業
+        let sideJob = (age <= input.income.retirementAge || input.income.reemployment.enabled) ? input.income.sideJobIncome : 0;
+
+        // 退職金加算
+        let otherIncome = 0;
+        if (age === input.income.retirementAge) {
+            otherIncome += input.income.retirementBonus;
         }
 
-        // その他
-        let otherInc = income.otherIncome.realEstateIncome + income.otherIncome.dividendIncome;
-        if (age === income.otherIncome.inheritance.expectedAge && income.otherIncome.inheritance.amount > 0) {
-            otherInc += income.otherIncome.inheritance.amount;
-            events.push('相続');
-        }
+        // 投資・運用枠への毎年の拠出額 (NISA/iDeCo等 月額合計×12)
+        // 積立終了年齢を超えている場合は新たな拠出を行わない
+        const annualInvestmentAmount = age <= input.investment.investmentEndAge
+            ? (input.investment.monthlyInvestment * 12) + (input.investment.idecoMonthly * 12)
+            : 0;
 
-        const grossIncome = salary + spouseSalary + pensionIncome + otherInc;
+        // 投資リターンの計算 (前年末の投資資産残高にかかる)
+        let investmentReturn = currentInvestmentBalance > 0 ? currentInvestmentBalance * (returnRate / 100) : 0;
 
-        // === 税・社保計算 ===
-        const childrenAges = basic.children.map(c => getAge(c.birthYear, c.birthMonth, year));
-        const si = calculateSocialInsurance(salary, age);
-        const spouseSi = basic.hasSpouse ? calculateSocialInsurance(spouseSalary,
-            getAge(basic.spouseBirthYear, basic.spouseBirthMonth, year)) : 0;
-        const totalSI = si + spouseSi;
+        // 当年の運用益を投資残高に加算
+        currentInvestmentBalance += investmentReturn;
 
-        const incomeTax = calculateIncomeTax(salary, basic.hasSpouse, childrenAges, si) +
-            (basic.hasSpouse ? calculateIncomeTax(spouseSalary, false, [], spouseSi) : 0);
-        const residentTax = calculateResidentTax(salary, basic.hasSpouse, childrenAges, si) +
-            (basic.hasSpouse ? calculateResidentTax(spouseSalary, false, [], spouseSi) : 0);
+        // インフレ率の考慮 (生活費などを名目で増やす)
+        const inflationMultiplier = Math.pow(1 + (input.scenario.inflationRate / 100), yearIndex);
 
-        const netIncome = grossIncome - incomeTax - residentTax - totalSI;
+        // ※改修フェーズ9: インフレを収入（給与・副業等）に適用しない。
+        // （昇給率や年齢ベースの給与変動のみで決定）
 
-        // === 支出計算 ===
-        const inflFactor = Math.pow(1 + inflationRate, yearIndex);
+        // 運用益（investmentReturn）は再投資として残高にのみ足すため、総収入（キャッシュフロー上）には含めない
+        let totalIncome = salary + spouseSalary + pension + sideJob + otherIncome;
 
-        // 生活費
-        const living = expense.living;
-        const monthlyLiving = living.food + living.utilities + living.communication +
-            living.dailyGoods + living.clothing + living.social +
-            living.transportation + living.miscellaneous;
-        const livingExp = monthlyLiving * 12 * inflFactor;
+        // --- 支出計算 ---
 
-        // 住居費
-        let housingExp = 0;
-        if (expense.housing.isOwner) {
-            const mortgageYearIndex = age - expense.housing.mortgage.startAge;
-            housingExp = calculateAnnualMortgagePayment(expense.housing.mortgage, mortgageYearIndex);
-            housingExp += expense.housing.managementFee * 12;
-            housingExp += expense.housing.propertyTax;
-            // リフォーム
-            for (const r of expense.housing.renovations) {
-                if (r.age === age) {
-                    housingExp += r.cost;
-                    events.push('リフォーム');
+        // 教育費・子ども生活費
+        let educationCost = 0;
+        let childAdditionalLivingCost = 0;
+        const educationDetailsObj: { label: string; amount: number }[] = [];
+
+        for (let i = 0; i < childrenAges.length; i++) {
+            const childStartAge = childrenAges[i];
+            const currentChildAge = childStartAge + yearIndex;
+
+            if (currentChildAge >= 0) {
+                // 教育費
+                const eduResult = calculateAnnualEducationCost(currentChildAge, input.expense.educationPlan);
+                const inflatedEduCost = eduResult.cost * inflationMultiplier;
+                educationCost += inflatedEduCost;
+
+                eduResult.details.forEach(detail => {
+                    educationDetailsObj.push({
+                        label: `${detail.label} (第${i + 1}子)`,
+                        amount: detail.amount * inflationMultiplier
+                    });
+                });
+
+                // 子ども追加生活費 (大学卒業の22歳まで加算)
+                if (currentChildAge <= 22) {
+                    childAdditionalLivingCost += input.expense.childRelatedCost.monthlyLivingCostPerChild * 12 * inflationMultiplier;
                 }
             }
-            if (mortgageYearIndex === expense.housing.mortgage.termYears) {
-                events.push('住宅ローン完済');
+        }
+
+        // 基本生活費
+        const livingCostMonthly = Object.values(input.expense.monthlyLivingCost).reduce((a, b) => a + b, 0);
+        const livingCost = (livingCostMonthly * 12 * inflationMultiplier) + childAdditionalLivingCost;
+        const basicLivingDetails = {
+            food: (input.expense.monthlyLivingCost.food * 12) * inflationMultiplier,
+            utilities: (input.expense.monthlyLivingCost.utilities * 12) * inflationMultiplier,
+            communication: (input.expense.monthlyLivingCost.communication * 12) * inflationMultiplier,
+            dailyNecessities: (input.expense.monthlyLivingCost.dailyNecessities * 12) * inflationMultiplier,
+            allowanceAndOther: (input.expense.monthlyLivingCost.allowanceAndOther * 12) * inflationMultiplier,
+            childAdditional: childAdditionalLivingCost > 0 ? childAdditionalLivingCost : undefined,
+        };
+
+        // 保険料
+        const selfInsuranceMonthly = Object.values(input.expense.insurance.self).reduce((a, b) => a + b, 0);
+        const spouseInsuranceMonthly = input.basicInfo.hasSpouse ? Object.values(input.expense.insurance.spouse).reduce((a, b) => a + b, 0) : 0;
+        const insuranceCost = (selfInsuranceMonthly + spouseInsuranceMonthly) * 12;
+        const insuranceDetails = {
+            selfTotal: selfInsuranceMonthly * 12,
+            spouseTotal: spouseInsuranceMonthly * 12,
+        };
+
+        const travelCost = input.expense.annualTravelLeisure * inflationMultiplier;
+
+        // 住宅費
+        let housingCost = 0;
+        let housingDetails = { rent: 0, mortgage: 0, downPayment: 0 };
+
+        if (input.expense.housing.type === 'rent') {
+            const rentCost = (input.expense.housing.monthlyRent * 12) * inflationMultiplier;
+            housingCost += rentCost;
+            housingDetails.rent += rentCost;
+        } else if (input.expense.housing.type === 'own_with_loan') {
+            if (remainingMortgageBalance > 0) {
+                const annualPmt = input.expense.housing.mortgage.monthlyPayment * 12;
+                housingCost += annualPmt;
+                housingDetails.mortgage += annualPmt;
+                remainingMortgageBalance -= annualPmt; // 超簡易的な残高減算
+                if (remainingMortgageBalance < 0) remainingMortgageBalance = 0;
             }
-        } else {
-            housingExp = expense.housing.monthlyRent * 12 * inflFactor;
         }
-
-        // 教育費
-        let educationExp = 0;
-        for (const child of basic.children) {
-            const childAge = getAge(child.birthYear, child.birthMonth, year);
-            const edInflFactor = Math.pow(1 + environment.educationInflation / 100, yearIndex);
-            educationExp += getAnnualEducationCost(childAge, child.educationPolicy) * edInflFactor;
-        }
-
-        // 保険
-        const insuranceExp = (expense.insurance.lifeInsurance + expense.insurance.medicalInsurance +
-            expense.insurance.carInsurance) * 12;
-
-        // 自動車
-        let carExp = 0;
-        if (expense.car.hasCar) {
-            carExp = expense.car.annualMaintenance;
-            const yearsOwned = yearIndex;
-            if (expense.car.purchaseCycleYears > 0 && yearsOwned % expense.car.purchaseCycleYears === 0 && yearIndex > 0) {
-                carExp += expense.car.purchaseCost;
-                events.push('車購入');
+        // 購入予定のイベント
+        if (input.expense.housing.purchasePlan.enabled && yearIndex === input.expense.housing.purchasePlan.yearsFromNow) {
+            housingCost += input.expense.housing.purchasePlan.downPayment;
+            housingDetails.downPayment += input.expense.housing.purchasePlan.downPayment;
+            remainingMortgageBalance = input.expense.housing.purchasePlan.propertyPrice - input.expense.housing.purchasePlan.downPayment;
+        } else if (input.expense.housing.purchasePlan.enabled && yearIndex > input.expense.housing.purchasePlan.yearsFromNow) {
+            if (remainingMortgageBalance > 0) {
+                const annualPmt = calculateAnnualMortgagePayment(
+                    input.expense.housing.purchasePlan.propertyPrice - input.expense.housing.purchasePlan.downPayment,
+                    input.expense.housing.purchasePlan.loanInterestRate,
+                    input.expense.housing.purchasePlan.loanPeriod
+                );
+                housingCost += annualPmt;
+                housingDetails.mortgage += annualPmt;
+                remainingMortgageBalance -= annualPmt;
             }
         }
 
-        // ライフイベント
-        let eventExp = 0;
-        for (const ev of expense.lifeEvents) {
-            if (ev.age === age) {
-                eventExp += ev.cost;
-                events.push(ev.name);
+        // （※教育費は上に移動済み）
+
+        // 車両費
+        let carCost = 0;
+        if (input.expense.car.enabled && yearIndex % input.expense.car.replaceCycleYears === 0 && yearIndex > 0) {
+            carCost = (input.expense.car.purchaseCost * input.expense.car.count) * inflationMultiplier;
+        }
+
+        let lifeEventCost = 0;
+
+        const totalExpense = livingCost + housingCost + educationCost + carCost + insuranceCost + travelCost + lifeEventCost;
+
+        const expenseDetailsObj = {
+            basicLiving: basicLivingDetails,
+            housing: housingDetails,
+            insurance: insuranceDetails,
+            education: educationDetailsObj.length > 0 ? educationDetailsObj : undefined,
+        };
+
+        // --- 税金・社保 ---
+        const taxDependents = childrenAges.map(a => ({ age: a + yearIndex })).filter(d => d.age >= 16);
+        const taxResult = calculateTaxes({
+            salaryIncomeManYen: salary + sideJob,
+            pensionIncomeManYen: pension,
+            age: age,
+            hasSpouse: input.basicInfo.hasSpouse,
+            spouseIncomeManYen: spouseSalary,
+            dependents: taxDependents
+        });
+
+        const incomeTax = taxResult.incomeTax;
+        const residentTax = taxResult.residentTax;
+        const socialInsurance = taxResult.socialInsurance;
+        const taxDetails = taxResult.details;
+
+        // --- 収支・残高計算 ---
+        let netIncome = totalIncome - socialInsurance - incomeTax - residentTax;
+
+        // 当年の基本計算での収支
+        let balance = netIncome - totalExpense;
+
+        // 1. 預貯金に収支を反映
+        currentSavingsBalance += balance;
+
+        // 2. 毎年の積立投資額を預貯金から投資資産へ移管（収支に関わらず予定通り拠出すると仮定）
+        currentSavingsBalance -= annualInvestmentAmount;
+        currentInvestmentBalance += annualInvestmentAmount;
+
+        let investmentWithdrawal = 0;
+
+        // 3. 預貯金がショート（マイナス）した場合の処理
+        if (currentSavingsBalance < 0) {
+            const shortage = Math.abs(currentSavingsBalance);
+            if (currentInvestmentBalance >= shortage) {
+                // 投資資産を取り崩して補填する
+                investmentWithdrawal = shortage;
+                currentInvestmentBalance -= shortage;
+                currentSavingsBalance = 0;
+            } else {
+                // 投資資産でも賄いきれない場合は全額取り崩し（破産判定へ）
+                investmentWithdrawal = currentInvestmentBalance;
+                currentSavingsBalance = -(shortage - currentInvestmentBalance);
+                currentInvestmentBalance = 0;
             }
+
+            // 取り崩した分を「今年の収入」として扱う
+            totalIncome += investmentWithdrawal;
+            netIncome += investmentWithdrawal;
+            // 収支(balance)上も、取り崩し分が流入したことで改善される（実質0等に）
+            balance += investmentWithdrawal;
         }
 
-        const totalExp = livingExp + housingExp + educationExp + insuranceExp + carExp + eventExp;
+        let totalAssets = currentSavingsBalance + currentInvestmentBalance;
 
-        // === 投資収益 ===
-        const returnRate = yearlyReturns ? yearlyReturns[yearIndex] ?? 0 : undefined;
-        let investGain: number;
-        if (returnRate !== undefined) {
-            investGain = Math.round(totalAssets * returnRate / 100 * 100) / 100;
-        } else {
-            investGain = calculateInvestmentReturn(totalAssets, investment.allocation, returnModifier);
+        if (totalAssets < 0) {
+            if (bankruptAge === null) bankruptAge = age;
+            totalAssets = 0; // 借金にはしない
+            currentSavingsBalance = 0;
         }
 
-        // 積立
-        const monthlyInv = age < income.employment.retirementAge ? investment.monthlyInvestment * 12 : 0;
+        if (totalAssets > peakAssets) {
+            peakAssets = totalAssets;
+            peakAssetsAge = age;
+        }
 
-        // 収支・資産更新
-        const netCashflow = netIncome - totalExp;
-        totalAssets = totalAssets + netCashflow + investGain + monthlyInv;
-
-        totalIncome += grossIncome;
-        totalExpense += totalExp;
-        if (totalAssets > peakAssets) peakAssets = totalAssets;
-        if (totalAssets < 0 && depletionAge === null) depletionAge = age;
+        lifetimeIncome += netIncome;
+        lifetimeExpense += totalExpense;
 
         records.push({
-            age,
-            year,
-            grossIncome: Math.round(grossIncome),
-            salary: Math.round(salary),
-            spouseSalary: Math.round(spouseSalary),
-            pensionIncome: Math.round(pensionIncome),
-            investmentIncome: Math.round(investGain + monthlyInv),
-            otherIncome: Math.round(otherInc),
-            incomeTax: Math.round(incomeTax),
-            residentTax: Math.round(residentTax),
-            socialInsurance: Math.round(totalSI),
-            netIncome: Math.round(netIncome),
-            totalExpense: Math.round(totalExp),
-            livingExpense: Math.round(livingExp),
-            housingExpense: Math.round(housingExp),
-            educationExpense: Math.round(educationExp),
-            insuranceExpense: Math.round(insuranceExp),
-            carExpense: Math.round(carExp),
-            eventExpense: Math.round(eventExp),
-            netCashflow: Math.round(netCashflow),
-            totalAssets: Math.round(totalAssets),
-            events,
+            age, year, salary, spouseSalary, pension, investmentReturn, sideJob, otherIncome, totalIncome,
+            livingCost, housingCost, educationCost, carCost, insuranceCost, travelCost, lifeEventCost, totalExpense,
+            incomeTax, residentTax, socialInsurance, netIncome, balance,
+            savingsBalance: currentSavingsBalance, investmentBalance: currentInvestmentBalance, totalAssets,
+            investmentWithdrawal, // 取り崩し額も記録
+            prevSavingsBalance, prevInvestmentBalance, annualInvestmentAmount, taxDetails,
+            expenseDetails: expenseDetailsObj
         });
     }
 
     return {
-        scenario: config.scenario,
+        scenario: scenarioType,
         records,
-        totalIncome: Math.round(totalIncome),
-        totalExpense: Math.round(totalExpense),
-        peakAssets: Math.round(peakAssets),
-        depletionAge,
-        finalAssets: Math.round(totalAssets),
+        bankruptAge,
+        lifetimeIncome,
+        lifetimeExpense,
+        peakAssets,
+        peakAssetsAge,
     };
-}
-
-/**
- * 3シナリオ + モンテカルロの全結果を返す
- */
-export function runFullSimulation(input: PlanInput): SimulationResult {
-    // 基本シナリオ
-    const baseResult = runSingleSimulation({ ...input, config: { ...input.config, scenario: '基本' } });
-    const optimisticResult = runSingleSimulation({ ...input, config: { ...input.config, scenario: '楽観' } });
-    const pessimisticResult = runSingleSimulation({ ...input, config: { ...input.config, scenario: '悲観' } });
-
-    // モンテカルロ
-    const monteCarlo = runMonteCarlo(input, input.config.monteCarloTrials);
-
-    return { baseResult, optimisticResult, pessimisticResult, monteCarlo };
 }

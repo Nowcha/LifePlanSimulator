@@ -1,36 +1,73 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# LifePlan Simulator
 
-## Getting Started
+> あなたの人生設計をシミュレーション。フロントエンド完結型のリアルなライフプラン・資産推移シミュレーター。
 
-First, run the development server:
+## 概要
+
+日本の税制・社会保険料・教育費等の統計データに基づき、生涯のキャッシュフローと資産推移をシミュレーションするWebアプリケーションです。バックエンドサーバーを持たない完全なSPA（Single Page Application）として構築されており、GitHub Pages等で静的ホスティングが可能です。
+
+### 主な機能
+- **ステップウィザード形式の入力**: 基本情報、収入、支出、資産・運用、シナリオ設定の5ステップで簡単に条件を入力。
+- **精緻な計算エンジン**: 累進課税、社会保険料、基礎年金・厚生年金の報酬比例部分を概算で自動計算。
+- **シナリオ分析とモンテカルロ**: 楽観・標準・悲観シナリオに基づく資産推移の可視化。さらに幾何ブラウン運動(GBM)を用いたモンテカルロ・シミュレーションにより、リターン変動リスクを織り込んだ達成確率を算出。
+- **ダッシュボードと詳細分析**: 計算結果を Recharts による鮮やかなグラフで可視化。年ごとの詳細なキャッシュフロー表の確認や CSV形式でのデータダウンロードに対応。
+- **ダークモード対応・入力データ保存**: OS設定に連動したダークモード。入力途中のデータは LocalStorage に自動保存され、リロードしても消えません。
+
+## 計算ロジックについて
+
+本アプリは、ユーザーが入力したパラメータに基づき、毎年以下の計算を行って資産推移をシミュレーションします。ダッシュボードの詳細データ表に表示される各項目の主な計算内容は以下の通りです。
+
+1. **手取り（可処分所得）**
+   - 総収入（給与収入・退職金・公的年金・副業収入などの合算）から、非課税所得を考慮した上で**所得税・住民税・社会保険料を控除**した金額です。
+   - インフレ率（シナリオ設定で指定）が設定されている場合は、将来の給与ベースにインフレ率が乗算されます。
+2. **総支出**
+   - 基本生活費、住居費（家賃や住宅ローン）、教育費、車両費、保険料、レジャー旅行費、その他ライフイベント費用の**合計**です。
+   - 支出額にもシナリオで設定されたインフレ率が反映されます（住宅ローン返済額など固定費を除く）。
+3. **税・社会保険料**
+   - **社会保険料**: 協会けんぽ等の料率（約15%程度）を参考に、給与の一定割合を控除します。
+   - **所得税・住民税**: 基礎控除、配偶者控除、扶養控除（16歳以上の子ども等）、社会保険料控除を概算で適用し、残りの課税所得に対して日本の累進課税税率（所得税）と一律10%（住民税）を適用して算出します。
+4. **預貯金（現金残高）**
+   - 前年の預貯金残高に対して、その年の【手取り額 - 総支出】（年間収支）を加減算します。
+   - さらに、設定された**毎月の積立・運用額（NISA・iDeCo等）** を預貯金口座から引き落として（減算して）投資口座へ移管します。
+   - 年間収支が赤字で預貯金がショートした場合は、投資資産を自動的に取り崩して補填します。
+5. **投資資産**
+   - 前年の投資資産残高に対して、シナリオで設定された**期待リターン（利回り）** を乗じて運用益を算出・加算します。
+   - その後、その年の預貯金からの**積立・運用拠出額**（※「積立終了年齢」到達前の場合のみ）を加算します。
+
+## 技術スタック
+
+- **フレームワーク**: React 19 + TypeScript
+- **ビルドツール**: Vite
+- **スタイリング**: Tailwind CSS v4
+- **UI コンポーネント**: [shadcn/ui](https://ui.shadcn.com/) (Radix UI ベース)
+- **状態管理**: Zustand (persist ミドルウェアによる LocalStorage 保存)
+- **グラフ描画**: Recharts
+- **アイコン**: Lucide React
+
+## ローカル環境での実行方法
+
+Node.js (v18以降) がインストールされている環境で、以下のコマンドを実行してください。
 
 ```bash
+# 依存パッケージのインストール
+npm install
+
+# 開発サーバーの起動 (デフォルト: http://localhost:5173)
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+# プロダクションビルド
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## デプロイについて
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+本プロジェクトは GitHub Actions を使用して `gh-pages` ブランチに自動デプロイされるよう設定されています（`.github/workflows/deploy.yml`）。
+リポジトリの `main` ブランチにプッシュすると、自動的にビルドが走り、GitHub Pages 上に公開されます。
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 注意事項
+- このシミュレーターで計算される税額・年金額・教育費などは統計や簡略化された計算式（令和時代の日本の制度を模した論理）に基づく概算です。正確な税額や資金計画については、税理士やファイナンシャルプランナー等の専門家にご相談ください。
+- すべてのデータはブラウザの LocalStorage に保存され、外部サーバーには送信されません。
 
-## Learn More
+## ライセンス
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT License

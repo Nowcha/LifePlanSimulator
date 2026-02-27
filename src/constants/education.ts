@@ -1,48 +1,64 @@
-// 教育費テンプレート（文科省「子供の学習費調査」ベース）
-// 年間費用（万円）
+/**
+ * 教育費テンプレート — 文部科学省「子供の学習費調査」ベース
+ * 単位: 万円/年
+ */
 
-import type { EducationPolicy } from '@/types/plan';
+/** 保育園/乳幼児預かり (0〜2歳): 年間費用 */
+export const NURSERY_COST = {
+    public: 24,    // 公立: 約24万円/年
+    private: 60,   // 私立: 約60万円/年
+    none: 0,       // 預けない: 0円
+} as const;
 
-/** 教育段階 */
-export type EducationStage = '幼稚園' | '小学校' | '中学校' | '高校' | '大学';
+/** 幼稚園 (3年間) */
+export const KINDERGARTEN_COST = {
+    public: 17,    // 公立: 約17万円/年
+    private: 31,   // 私立: 約31万円/年
+} as const;
 
-/** 教育段階別の年齢範囲 */
-export const EDUCATION_STAGES: { stage: EducationStage; startAge: number; endAge: number }[] = [
-    { stage: '幼稚園', startAge: 3, endAge: 5 },
-    { stage: '小学校', startAge: 6, endAge: 11 },
-    { stage: '中学校', startAge: 12, endAge: 14 },
-    { stage: '高校', startAge: 15, endAge: 17 },
-    { stage: '大学', startAge: 18, endAge: 21 },
-];
+/** 小学校 (6年間) */
+export const ELEMENTARY_COST = {
+    public: 35,    // 公立: 約35万円/年
+    private: 167,  // 私立: 約167万円/年
+} as const;
 
-/** 年間教育費テンプレート（万円/年） */
-export const EDUCATION_COST_TABLE: Record<EducationStage, Record<EducationPolicy, number>> = {
-    '幼稚園': { '公立': 17, '私立': 31 },
-    '小学校': { '公立': 35, '私立': 167 },
-    '中学校': { '公立': 54, '私立': 144 },
-    '高校': { '公立': 51, '私立': 105 },
-    '大学': { '公立': 108, '私立': 152 },
-};
+/** 中学校 (3年間) */
+export const JUNIOR_HIGH_COST = {
+    public: 54,    // 公立: 約54万円/年
+    private: 144,  // 私立: 約144万円/年
+} as const;
 
-/** 大学入学金（万円） */
-export const UNIVERSITY_ENTRANCE_FEE: Record<EducationPolicy, number> = {
-    '公立': 28,
-    '私立': 25,
-};
+/** 高校 (3年間) */
+export const HIGH_SCHOOL_COST = {
+    public: 51,    // 公立: 約51万円/年
+    private: 105,  // 私立: 約105万円/年
+} as const;
 
 /**
- * 子どもの年齢と教育方針から年間教育費を算出
+ * 大学 (4年間、医歯薬系は6年間)
+ * 授業料＋生活費込み
  */
-export function getAnnualEducationCost(childAge: number, policy: EducationPolicy): number {
-    for (const { stage, startAge, endAge } of EDUCATION_STAGES) {
-        if (childAge >= startAge && childAge <= endAge) {
-            let cost = EDUCATION_COST_TABLE[stage][policy];
-            // 大学1年目は入学金を加算
-            if (stage === '大学' && childAge === 18) {
-                cost += UNIVERSITY_ENTRANCE_FEE[policy];
-            }
-            return cost;
-        }
-    }
-    return 0; // 対象外の年齢
-}
+export const UNIVERSITY_COST = {
+    national: 70,          // 国公立: 約70万円/年
+    private_arts: 120,     // 私立文系: 約120万円/年
+    private_science: 155,  // 私立理系: 約155万円/年
+    medical: 350,          // 医歯薬系: 約350万円/年
+} as const;
+
+/** 一人暮らし追加費用 (万円/年) */
+export const LIVING_ALONE_ADDITIONAL = 100;
+
+/**
+ * 子どもの年齢に応じた教育段階
+ * (0歳 = 生まれた年)
+ */
+export const EDUCATION_STAGES = [
+    { ageStart: 3, ageEnd: 5, stage: 'kindergarten' as const, years: 3 },
+    { ageStart: 6, ageEnd: 11, stage: 'elementary' as const, years: 6 },
+    { ageStart: 12, ageEnd: 14, stage: 'juniorHigh' as const, years: 3 },
+    { ageStart: 15, ageEnd: 17, stage: 'highSchool' as const, years: 3 },
+    { ageStart: 18, ageEnd: 21, stage: 'university' as const, years: 4 },
+] as const;
+
+/** 医歯薬系の大学年数 */
+export const MEDICAL_UNIVERSITY_YEARS = 6;

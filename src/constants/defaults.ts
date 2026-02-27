@@ -1,154 +1,148 @@
-// デフォルト入力値・シナリオパラメータ
+﻿import type { SimulationInput } from '@/types/plan';
 
-import type { PlanInput, ScenarioType, ExternalEnv } from '@/types/plan';
-
-/** 現在の年（シミュレーション基準年） */
-export const CURRENT_YEAR = 2025;
-
-/** デフォルト入力値 */
-export const DEFAULT_INPUT: PlanInput = {
-    basic: {
-        name: '',
-        birthYear: 1995,
-        birthMonth: 1,
-        gender: '男性',
+/**
+ * デフォルト値 — 日本の平均的な値
+ */
+export const DEFAULT_INPUT: SimulationInput = {
+    basicInfo: {
+        currentAge: 30,
+        gender: 'male',
+        simulationEndAge: 90,
         hasSpouse: false,
-        spouseBirthYear: 1997,
-        spouseBirthMonth: 1,
+        spouseAge: 28,
+        childrenCount: 0,
         children: [],
-        region: '関東',
-        lifeExpectancy: 87,
-        spouseLifeExpectancy: 93,
+        futureBirth: {
+            enabled: false,
+            count: 1,
+            yearsFromNow: 3,
+        },
     },
+
     income: {
-        employment: {
-            annualIncome: 500,
-            raiseRate: 1.5,
-            bonusMonths: 4,
-            severancePay: 1500,
-            retirementAge: 65,
-            reemploymentIncome: 300,
-            reemploymentEndAge: 70,
+        annualIncome: 450,
+        salaryGrowthRate: 1.5,
+        salaryGrowthCurve: 'seniority',
+        retirementAge: 65,
+        reemployment: {
+            enabled: true,
+            annualIncome: 300,
         },
-        spouseEmployment: {
-            annualIncome: 0,
-            raiseRate: 1.0,
-            bonusMonths: 2,
-            severancePay: 500,
-            retirementAge: 65,
-            reemploymentIncome: 200,
-            reemploymentEndAge: 70,
-        },
+        spouseAnnualIncome: 0,
+        spouseWorkPattern: 'fulltime',
+        sideJobIncome: 0,
+        retirementBonus: 1500,
         pension: {
-            system: '厚生年金',
             startAge: 65,
-            monthlyAmount: 15,
-        },
-        spousePension: {
-            system: '国民年金',
-            startAge: 65,
-            monthlyAmount: 6.5,
-        },
-        corporatePension: {
-            balance: 0,
-            monthlyContribution: 2.3,
-            expectedReturn: 3.0,
-        },
-        otherIncome: {
-            realEstateIncome: 0,
-            dividendIncome: 0,
-            inheritance: {
-                expectedAge: 60,
-                amount: 0,
-            },
+            annualAmount: 0, // 0 = 自動計算
         },
     },
+
     expense: {
-        living: {
-            food: 5,
-            utilities: 1.5,
-            communication: 1,
-            dailyGoods: 0.5,
-            clothing: 1,
-            social: 1.5,
-            transportation: 1,
-            miscellaneous: 1.5,
+        monthlyLivingCost: {
+            food: 6,
+            utilities: 2.5,
+            communication: 1.5,
+            dailyNecessities: 2,
+            allowanceAndOther: 8,
         },
         housing: {
-            isOwner: false,
+            type: 'rent',
             monthlyRent: 8,
             mortgage: {
-                principal: 3500,
+                monthlyPayment: 10,
+                remainingYears: 30,
                 interestRate: 1.0,
-                termYears: 35,
-                method: '元利均等',
-                startAge: 35,
+                remainingBalance: 3000,
             },
-            managementFee: 1.5,
-            propertyTax: 12,
-            renovations: [],
+            purchasePlan: {
+                enabled: false,
+                yearsFromNow: 5,
+                propertyPrice: 4000,
+                downPayment: 500,
+                loanInterestRate: 1.0,
+                loanPeriod: 35,
+            },
         },
-        insurance: {
-            lifeInsurance: 1.5,
-            medicalInsurance: 0.5,
-            carInsurance: 0.5,
+        educationPlan: {
+            nursery: 'none',
+            kindergarten: 'public',
+            elementary: 'public',
+            juniorHigh: 'public',
+            highSchool: 'public',
+            university: 'national',
+            livingAlone: false,
+            birthCost: 10,
+        },
+        childRelatedCost: {
+            monthlyLivingCostPerChild: 3,
         },
         car: {
-            hasCar: false,
-            purchaseCycleYears: 7,
+            enabled: false,
+            count: 1,
+            replaceCycleYears: 7,
             purchaseCost: 250,
-            annualMaintenance: 30,
         },
+        insurance: {
+            self: { life: 1, medical: 0.5, cancer: 0.5, other: 0 },
+            spouse: { life: 0, medical: 0, cancer: 0, other: 0 },
+        },
+        annualTravelLeisure: 20,
         lifeEvents: [],
     },
+
     investment: {
-        assets: [
-            { type: '預金', balance: 300 },
-        ],
-        allocation: {
-            stockRatio: 50,
-            bondRatio: 30,
-            cashRatio: 20,
-            stockReturn: 5.0,
-            bondReturn: 2.0,
-            cashReturn: 0.1,
-            stockStdDev: 15,
-            bondStdDev: 5,
+        totalAssets: {
+            savings: 300,
+            stocksAndFunds: 100,
+            other: 0,
         },
         monthlyInvestment: 3,
-        nisaAnnual: 120,
-        withdrawalStartAge: 65,
-        withdrawalMethod: '定率',
-        withdrawalAmount: 200,
-        withdrawalRate: 4,
+        assetAllocation: {
+            domesticStocks: 25,
+            foreignStocks: 35,
+            domesticBonds: 10,
+            foreignBonds: 10,
+            reit: 10,
+            cash: 10,
+        },
+        nisaEnabled: true,
+        nisaAnnualAmount: 36,
+        idecoMonthly: 2.3,
+        investmentEndAge: 65,
+        expectedReturn: 0, // 0 = 自動計算
+        withdrawalMethod: 'fixed_rate',
+        debts: [],
     },
-    environment: {
-        generalInflation: 2.0,
-        educationInflation: 2.5,
-        medicalInflation: 3.0,
-        wageGrowthRate: 1.5,
-        depositRate: 0.02,
-    },
-    config: {
-        endAge: 100,
-        scenario: '基本',
-        monteCarloTrials: 1000,
+
+    scenario: {
+        inflationRate: 1.5,
+        returnScenario: 'standard',
+        customReturn: 4.0,
+        pensionReduction: 'current',
+        monteCarlo: {
+            enabled: false,
+            trials: 1000,
+        },
     },
 };
 
-/** シナリオ別の環境パラメータ修正値 */
-export const SCENARIO_MODIFIERS: Record<ScenarioType, Partial<ExternalEnv> & { returnModifier: number }> = {
-    '楽観': {
-        generalInflation: 1.0,
-        wageGrowthRate: 2.5,
-        returnModifier: 1.5,  // リターンを1.5倍に
-    },
-    '基本': {
-        returnModifier: 1.0,
-    },
-    '悲観': {
-        generalInflation: 3.0,
-        wageGrowthRate: 0.5,
-        returnModifier: 0.5,  // リターンを0.5倍に
-    },
-};
+/**
+ * シナリオ別の期待リターン修正値 (年率%)
+ */
+export const SCENARIO_RETURNS = {
+    optimistic: 6.0,
+    standard: 4.0,
+    pessimistic: 2.0,
+} as const;
+
+/**
+ * シナリオ別のリターン標準偏差 (年率%)
+ * モンテカルロシミュレーションで使用
+ */
+export const SCENARIO_VOLATILITY = {
+    optimistic: 15.0,
+    standard: 12.0,
+    pessimistic: 10.0,
+} as const;
+

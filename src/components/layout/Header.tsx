@@ -1,36 +1,47 @@
-'use client';
-// ヘッダーコンポーネント
-
 import { Button } from '@/components/ui/button';
-
-interface Props {
-    showBack: boolean;
-    onBack: () => void;
-    onReset: () => void;
+import { Moon, Sun, RotateCcw } from 'lucide-react';
+interface HeaderProps {
     isDark: boolean;
     onToggleDark: () => void;
+    onReset: () => void;
 }
 
-export default function Header({ showBack, onBack, onReset, isDark, onToggleDark }: Props) {
+export function Header({ isDark, onToggleDark, onReset }: HeaderProps) {
     return (
-        <header className="sticky top-0 z-50 backdrop-blur-xl bg-background/80 border-b">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+        <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-lg">
+            <div className="container mx-auto flex items-center justify-between h-16 px-4">
                 <div className="flex items-center gap-3">
-                    <span className="text-2xl">📊</span>
+                    <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+                        <span className="text-white font-bold text-sm">LP</span>
+                    </div>
                     <div>
-                        <h1 className="text-lg font-bold">ライフプランシミュレーター</h1>
-                        <p className="text-xs text-muted-foreground hidden sm:block">将来の家計を見える化しよう</p>
+                        <h1 className="text-lg font-bold tracking-tight">
+                            ライフプランシミュレーター
+                        </h1>
+                        <p className="text-xs text-muted-foreground hidden sm:block">
+                            あなたの人生設計をシミュレーション
+                        </p>
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    {showBack && (
-                        <Button variant="outline" size="sm" onClick={onBack}>✏️ 入力に戻る</Button>
-                    )}
-                    <Button variant="ghost" size="sm" className="text-destructive" onClick={onReset}>🔄 リセット</Button>
-                    <Button variant="ghost" size="icon" onClick={onToggleDark} aria-label="ダークモード切替">
-                        {isDark ? '☀️' : '🌙'}
+
+                <nav className="flex items-center gap-2">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={onReset}
+                        title="入力をリセット"
+                    >
+                        <RotateCcw className="h-4 w-4" />
                     </Button>
-                </div>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={onToggleDark}
+                        title={isDark ? 'ライトモード' : 'ダークモード'}
+                    >
+                        {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                    </Button>
+                </nav>
             </div>
         </header>
     );
